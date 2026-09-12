@@ -3490,6 +3490,82 @@ function closeModalSafely(modalId) {
 }
 
 // =====================================================
+// API MANAGER - OPTIMASI GOOGLE APPS SCRIPT
+// Mengurangi request ganda, memakai cache singkat, dan menyimpan cache
+// per sesi agar navigasi menu tidak selalu memanggil Apps Script.
+// =====================================================
+const APP_API_CACHE = new Map();
+const APP_API_PENDING = new Map();
+const APP_API_DEFAULT_TTL = 15000;
+
+function appApiCacheKey(url) {
+  return String(url).replace(/[?&]ts=\d+/g, '').replace(/[?&]$/, '');
+}
+
+async function appFetchJSON(url, options = {}, ttl = APP_API_DEFAULT_TTL) {
+  const key = appApiCacheKey(url);
+  const now = Date.now();
+  const cached = APP_API_CACHE.get(key);
+
+  if (cached && (now - cached.time) < ttl) return cached.data;
+  if (APP_API_PENDING.has(key)) return APP_API_PENDING.get(key);
+
+  const request = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(url, {
+        cache: 'default',
+        signal: controller.signal,
+        ...options
+      });
+      if (!response.ok) throw new Error(`Server merespons ${response.status}`);
+      const data = await response.json();
+      APP_API_CACHE.set(key, { time: Date.now(), data });
+      return data;
+    } finally {
+      clearTimeout(timeout);
+      APP_API_PENDING.delete(key);
+    }
+  })();
+
+  APP_API_PENDING.set(key, request);
+  return request;
+}
+
+function clearAppApiCache(match = '') {
+  for (const key of APP_API_CACHE.keys()) {
+    if (!match || key.includes(match)) APP_API_CACHE.delete(key);
+  }
+}
+
+function saveProductsSessionCache(data) {
+  try {
+    sessionStorage.setItem('joanna_products_cache', JSON.stringify({
+      time: Date.now(),
+      data
+    }));
+  } catch (_) {}
+}
+
+function getProductsSessionCache(maxAge = 60000) {
+  try {
+    const raw = sessionStorage.getItem('joanna_products_cache');
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (!cached || !Array.isArray(cached.data) || Date.now() - cached.time > maxAge) return null;
+    return cached.data;
+  } catch (_) {
+    return null;
+  }
+}
+
+function invalidateProductCache() {
+  clearAppApiCache('action=read');
+  try { sessionStorage.removeItem('joanna_products_cache'); } catch (_) {}
+}
+
+// =====================================================
 // PASSWORD DATABASE (Spreadsheet sheet: Login)
 // Semua akses password memakai endpoint Apps Script yang sama.
 // Backend Code.gs menyediakan action=verifyPassword dan changePassword.
@@ -3502,15 +3578,8 @@ async function verifyPasswordWithDatabase(password){
   const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const url = `${GAS_URL}?action=verifyPassword&password=${encodeURIComponent(password)}&ts=${Date.now()}`;
-    const res = await fetch(url, {
-      cache:'no-store',
-      signal: controller.signal
-    });
-
-    if(!res.ok) throw new Error('Database password tidak dapat diakses.');
-
-    const data = await res.json();
+    const url = `${GAS_URL}?action=verifyPassword&password=${encodeURIComponent(password)}`;
+    const data = await appFetchJSON(url, {}, 0);
     return data && data.valid === true;
 
   } finally {
@@ -4799,18 +4868,26 @@ async function sendCRUDToGAS(payload) {
    * mode:no-cors digunakan agar POST ke Web App Apps Script
    * tetap berjalan pada deployment lintas domain.
    */
-  await fetch(GAS_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    cache: 'no-store',
-    redirect: 'follow',
-    headers: {
-      'Content-Type': 'text/plain;charset=utf-8'
-    },
-    body: JSON.stringify(payload)
-  });
-
-  return { success: true };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      cache: 'no-store',
+      redirect: 'follow',
+      keepalive: true,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: JSON.stringify(payload)
+    });
+    invalidateProductCache();
+    return { success: true };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 document.getElementById('productForm').addEventListener('submit', async (e) => {
@@ -5047,7 +5124,7 @@ function viewQR(base64Data, sku) {
 // ==================================================
 let productsFetchPromise = null;
 let lastProductsFetchAt = 0;
-const PRODUCTS_CACHE_TTL = 2500;
+const PRODUCTS_CACHE_TTL = 15000;
 
 async function fetchProductsFromGAS(forceRefresh = false) {
   if (productsFetchPromise && !forceRefresh) return productsFetchPromise;
@@ -5069,20 +5146,28 @@ async function fetchProductsFromGASDirect() {
     return Promise.resolve(products); 
   }
 
+  // Gunakan cache sesi sebagai tampilan awal. Data tetap dapat disinkronkan
+  // pada request berikutnya tanpa membuat pengguna menunggu layar kosong.
+  if (!products.length) {
+    const sessionProducts = getProductsSessionCache();
+    if (sessionProducts && sessionProducts.length) {
+      products = sessionProducts;
+      gasProducts = sessionProducts;
+      updateProductTableCategoryFilter(gasProducts);
+      if (tableBody) filterGASProductsTable();
+      lastProductsFetchAt = Date.now();
+      return products;
+    }
+  }
+
   if (tableBody) {
     tableBody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Memuat data dari Spreadsheet...</td></tr>`;
   }
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
     const separator = GAS_URL.includes('?') ? '&' : '?';
-    const res = await fetch(`${GAS_URL}${separator}action=read&ts=${Date.now()}`, {
-      cache: 'no-store',
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    const json = await res.json();
+    const endpoint = `${GAS_URL}${separator}action=read`;
+    const json = await appFetchJSON(endpoint, {}, 15000);
     if (json.success) {
       gasProducts = sortNewestProductsFirst(json.data);
       updateProductTableCategoryFilter(gasProducts);
@@ -5108,6 +5193,9 @@ async function fetchProductsFromGASDirect() {
         };
       });
       
+      // Simpan katalog agar pembukaan menu berikutnya tidak selalu menunggu Apps Script.
+      saveProductsSessionCache(products);
+
       let cartChanged = false;
       cart = cart.filter(c => {
           const p = products.find(x => x.id === c.id);
@@ -6120,7 +6208,7 @@ async function postGAS(payload) {
   // no-cors tetap digunakan agar Web App Apps Script dapat menerima data lintas domain.
   // Timeout mencegah tombol pembayaran terasa macet terlalu lama saat jaringan bermasalah.
   const controller = new AbortController();
-  const timeout = setTimeout(()=>controller.abort(), 7000);
+  const timeout = setTimeout(()=>controller.abort(), 20000);
 
   try{
     await fetch(GAS_URL, {
@@ -6133,6 +6221,9 @@ async function postGAS(payload) {
       headers:{'Content-Type':'text/plain;charset=utf-8'},
       body:JSON.stringify(payload)
     });
+    if (['createTransaction','refundTransaction','create','update','delete'].includes(String(payload?.action || ''))) {
+      invalidateProductCache();
+    }
     return true;
   }finally{
     clearTimeout(timeout);
@@ -6140,63 +6231,26 @@ async function postGAS(payload) {
 }
 
 async function autoRefreshAfterPayment(soldItems = []){
-  // Sinkronkan data terbaru tanpa reload halaman agar koneksi Bluetooth tidak terputus.
-  // Karena POST Apps Script menggunakan no-cors, perubahan di Spreadsheet dapat membutuhkan
-  // beberapa saat sebelum terbaca kembali. Gunakan beberapa percobaan otomatis.
-  const salesContainer = document.getElementById('orderProductList');
+  // OPTIMASI: jangan membaca Spreadsheet 3 kali berturut-turut.
+  // Stok sudah diperbarui secara lokal saat pembayaran, sehingga cukup satu
+  // sinkronisasi tertunda setelah Apps Script selesai menulis data.
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1800));
+    await fetchProductsFromGAS(true);
 
-  const showSalesLoading = (message) => {
-    if (!salesContainer) return;
-    salesContainer.innerHTML = `
-      <div class="w-100 text-center py-5">
-        <div class="spinner-border text-primary mb-3" role="status"></div>
-        <div class="fw-semibold">${message}</div>
-        <div class="text-muted small mt-1">Memperbarui stok produk terbaru...</div>
-      </div>`;
-  };
+    if (typeof renderOrderProducts === 'function') renderOrderProducts();
+    if (typeof renderSummary === 'function') renderSummary();
 
-  try{
-    showSalesLoading('Memuat data terbaru...');
-
-    // Coba membaca ulang beberapa kali sampai perubahan stok dari transaksi selesai diproses.
-    const attempts = 3;
-    for(let attempt = 0; attempt < attempts; attempt++){
-      if(attempt > 0){
-        await new Promise(resolve => setTimeout(resolve, 900));
-      }
-
-      await fetchProductsFromGAS();
-
-      // Jika stok produk yang baru dijual sudah berubah sesuai transaksi,
-      // sinkronisasi dianggap berhasil dan tidak perlu menunggu percobaan berikutnya.
-      const synced = !Array.isArray(soldItems) || soldItems.length === 0 ||
-        soldItems.every(item => {
-          const latest = products.find(p => String(p.id) === String(item.id));
-          return !latest || Number(latest.stock || 0) <= Number(item.previousStock || Infinity) - Number(item.qty || 0);
-        });
-
-      if(synced || attempt === attempts - 1) break;
+    // History hanya dimuat bila sedang diperlukan/terlihat.
+    const historyPage = document.getElementById('page-history-transaksi');
+    if (historyPage?.classList.contains('active')) {
+      await loadTransactionHistory(true);
     }
-
-    await loadTransactionHistory();
-
-    // Setelah data terbaru diterima, tampilkan ulang menu PENJUALAN.
-    if(typeof renderOrderProducts === 'function') renderOrderProducts();
-    if(typeof renderSummary === 'function') renderSummary();
-
-    if(typeof loadDashboard === 'function') {
-      Promise.resolve(loadDashboard()).catch(()=>{});
-    }
-
-    showToast('Data Diperbarui','Stok pada menu Penjualan telah disinkronkan dengan data terbaru.','slate');
-  }catch(err){
-    console.warn('Auto refresh setelah pembayaran gagal:',err);
-
-    // Jangan biarkan tampilan PENJUALAN berhenti pada status memuat.
-    if(typeof renderOrderProducts === 'function') renderOrderProducts();
+  } catch(err) {
+    console.warn('Sinkronisasi setelah pembayaran gagal:', err);
+    // UI lokal tetap dapat digunakan meskipun server sedang lambat.
   }
 }
-
 async function processPayment() {
   if (cart.length === 0) {
     return showToast('Kosong', 'Keranjang masih kosong.', 'red');
@@ -6354,7 +6408,7 @@ async function processPayment() {
       autoRefreshAfterPayment(soldItemsForRefresh).catch(err =>
         console.warn('Sinkronisasi database background gagal:', err)
       );
-    }, 250);
+    }, 0);
 
   } catch (error) {
     console.error('Gagal menyimpan transaksi:', error);
@@ -6850,14 +6904,18 @@ async function enrichHistoryWithProductNames(history) {
   return results;
 }
 
-async function loadTransactionHistory() {
+let historyFetchPromise = null;
+let lastHistoryFetchAt = 0;
+const HISTORY_CACHE_TTL = 15000;
+
+async function loadTransactionHistory(forceRefresh = false) {
   const body=document.getElementById('historyTableBody');
   if (!body) return;
   body.innerHTML='<tr><td colspan="9" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Memuat history, nama produk, dan stok...</td></tr>';
 
   try {
-    const res=await fetch(`${GAS_URL}?action=history&period=ALL&ts=${Date.now()}`,{cache:'no-store'});
-    const json=await res.json();
+    const endpoint = `${GAS_URL}?action=history&period=ALL`;
+    const json = await appFetchJSON(endpoint, {}, forceRefresh ? 0 : HISTORY_CACHE_TTL);
     if (!json.success) throw new Error(json.message || 'Gagal memuat history.');
 
     const rawHistory=Array.isArray(json.data)?json.data:[];
@@ -7446,23 +7504,17 @@ function applyRefundStockLocally(refundStockMap) {
 }
 
 async function verifyRefundStockSync(beforeStockMap, refundStockMap) {
-  // Apps Script no-cors tidak mengembalikan body POST, sehingga stok diverifikasi
-  // dengan membaca ulang database beberapa kali.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await new Promise(resolve => setTimeout(resolve, 900));
-    await fetchProductsFromGAS(true);
+  // Satu kali verifikasi setelah Apps Script mendapat waktu untuk menyimpan.
+  // Versi lama melakukan sampai 5 request GET sehingga aplikasi terasa berat.
+  await new Promise(resolve => setTimeout(resolve, 1800));
+  await fetchProductsFromGAS(true);
 
-    const allSynced = [...refundStockMap.entries()].every(([productId, refundQty]) => {
-      const before = Number(beforeStockMap.get(productId) || 0);
-      const current = products.find(p => String(p.id) === String(productId));
-      return current && Number(current.stock || 0) >= before + Number(refundQty || 0);
-    });
-
-    if (allSynced) return true;
-  }
-  return false;
+  return [...refundStockMap.entries()].every(([productId, refundQty]) => {
+    const before = Number(beforeStockMap.get(productId) || 0);
+    const current = products.find(p => String(p.id) === String(productId));
+    return current && Number(current.stock || 0) >= before + Number(refundQty || 0);
+  });
 }
-
 async function fallbackRestoreRefundStock(beforeStockMap, refundStockMap) {
   // Fallback: apabila action refund di Apps Script hanya mengubah status transaksi
   // tetapi belum mengembalikan stok, gunakan endpoint update produk yang sudah dipakai
@@ -7480,7 +7532,7 @@ async function fallbackRestoreRefundStock(beforeStockMap, refundStockMap) {
     });
   }
 
-  await new Promise(resolve => setTimeout(resolve, 900));
+  await new Promise(resolve => setTimeout(resolve, 1200));
   await fetchProductsFromGAS(true);
 }
 
