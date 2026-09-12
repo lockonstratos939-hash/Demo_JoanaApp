@@ -2698,7 +2698,15 @@ html, body{
                     <label class="form-label">Harga Satuan</label>
                     <div class="input-price-wrap"><input type="number" class="form-control" id="pPrice" placeholder="0" required min="0"></div>
                   </div>
-                  <div class="col-md-6"><label class="form-label">Stok Produk</label><input type="number" class="form-control" id="pStock" placeholder="0" required min="0"></div>
+                  <div class="col-md-6">
+<label class="form-label">Jenis Stok</label>
+<select class="form-select" id="pStockType" required onchange="toggleStockInput()">
+<option value="TERBATAS" selected>Stok Terbatas</option>
+<option value="TIDAK_TERHINGGA">Stok Tidak Terhingga</option>
+</select>
+<small class="text-muted">Pilih stok terbatas atau produk/jasa tanpa batas stok.</small>
+</div>
+<div class="col-md-6"><label class="form-label">Stok Produk</label><input type="number" class="form-control" id="pStock" placeholder="0" required min="0"><small class="text-muted" id="pStockHelp">Masukkan jumlah stok yang tersedia.</small></div>
                   
                   <div class="col-md-6">
                     <label class="form-label">Kategori</label>
@@ -2993,9 +3001,6 @@ html, body{
               <div class="col-md-4 d-flex gap-2">
                 <button type="button" class="btn btn-accent flex-grow-1" onclick="applyHistoryDateRange()">
                   <i class="bi bi-search me-1"></i>Cari
-                </button>
-                <button type="button" class="btn btn-outline-secondary" onclick="resetHistoryDateRange()">
-                  <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
                 </button>
               </div>
             </div>
@@ -3431,7 +3436,7 @@ html, body{
 // KONFIGURASI APLIKASI
 // =====================================================
 // GANTI URL INI DENGAN URL WEB APP ANDA (Pastikan diakhiri dengan /exec)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxguJTc375u8UylMJwA8Q_7fWdOQtLoeVyw8bI5fy9tZpWtm4LU35zechNiuh47fOiE/exec'; 
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwrFrRp1lXY1OrN24WCKV9FnR6bMZ2gijmV_1K3APsFZMldII25jDFnbLDLBXoDif_q/exec'; 
 
 // MASUKKAN ID FOLDER GOOGLE DRIVE UNTUK MENYIMPAN GAMBAR PRODUK
 // Cara dapat ID: Buka folder di Google Drive, lihat URL. ID adalah bagian setelah `/folders/`
@@ -4788,6 +4793,10 @@ function removeProductImage() {
   imageChanged = 'remove';
   document.getElementById('imagePreview').src = 'https://picsum.photos/seed/default/200/200.jpg';
   document.getElementById('pImageFile').value = '';
+  document.getElementById('pStockType').value = 'TERBATAS';
+  document.getElementById('pStock').disabled = false;
+  document.getElementById('pStock').required = true;
+  toggleStockInput();
   toggleRemoveImageBtn(false);
 
   showToast(
@@ -4806,12 +4815,13 @@ function initQRCode() {
 function updateQRCode() {
   const name = document.getElementById('pName').value || 'Nama Produk';
   const price = document.getElementById('pPrice').value || '0';
-  const stock = document.getElementById('pStock').value || '0';
+  const stockType = document.getElementById('pStockType')?.value || 'TERBATAS';
+  const stock = stockType === 'TIDAK_TERHINGGA' ? 'Tidak Terhingga' : (document.getElementById('pStock').value || '0');
   const code = document.getElementById('pSku').value || '';
 
   document.getElementById('qrName').textContent = name;
   document.getElementById('qrPrice').textContent = formatRupiah(+price);
-  document.getElementById('qrStock').textContent = stock + ' unit';
+  document.getElementById('qrStock').textContent = stockType === 'TIDAK_TERHINGGA' ? stock : stock + ' unit';
   document.getElementById('qrCode').textContent = code || 'Kode Produk';
 
   if (qrcodeInstance) {
@@ -4846,7 +4856,28 @@ function resetQRForm() {
   setTimeout(() => updateQRCode(), 10); 
 }
 
+function toggleStockInput() {
+  const stockType = document.getElementById('pStockType')?.value || 'TERBATAS';
+  const stockInput = document.getElementById('pStock');
+  const stockHelp = document.getElementById('pStockHelp');
+  if (!stockInput) return;
+  if (stockType === 'TIDAK_TERHINGGA') {
+    stockInput.value = '';
+    stockInput.disabled = true;
+    stockInput.required = false;
+    stockInput.placeholder = 'Tidak Terhingga';
+    if (stockHelp) stockHelp.textContent = 'Produk ini dapat dijual tanpa batas stok dan tidak dapat di-refund.';
+  } else {
+    stockInput.disabled = false;
+    stockInput.required = true;
+    stockInput.placeholder = '0';
+    if (stockHelp) stockHelp.textContent = 'Masukkan jumlah stok yang tersedia.';
+  }
+  updateQRCode();
+}
+
 ['pName', 'pPrice', 'pStock', 'pSku'].forEach(id => document.getElementById(id).addEventListener('input', updateQRCode));
+document.getElementById('pStockType')?.addEventListener('change', toggleStockInput);
 
 
 // =====================================================
@@ -4860,31 +4891,42 @@ async function sendCRUDToGAS(payload) {
   }
 
   /*
-   * FOTO PRODUK:
-   * Base64 hanya dikirim sementara dari browser ke Apps Script.
-   * Apps Script mengubah Base64 menjadi File Google Drive,
-   * lalu Spreadsheet hanya menyimpan URL Google Drive.
+   * PENTING:
+   * Jangan menggunakan keepalive:true untuk upload foto Base64.
+   * Browser membatasi request keepalive (umumnya sekitar 64 KB), sehingga
+   * payload gambar dapat menyebabkan TypeError: Failed to fetch.
    *
-   * mode:no-cors digunakan agar POST ke Web App Apps Script
-   * tetap berjalan pada deployment lintas domain.
+   * Apps Script tetap menerima JSON melalui e.postData.contents.
    */
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  const timeout = setTimeout(() => controller.abort(), 60000);
+
   try {
-    await fetch(GAS_URL, {
+    const res = await fetch(GAS_URL, {
       method: 'POST',
       mode: 'no-cors',
       cache: 'no-store',
       redirect: 'follow',
-      keepalive: true,
       signal: controller.signal,
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'
       },
       body: JSON.stringify(payload)
     });
+
+    // Pada mode no-cors response memang opaque. Jika fetch selesai tanpa
+    // exception, request sudah berhasil dikirim ke endpoint Apps Script.
     invalidateProductCache();
-    return { success: true };
+    return { success: true, responseType: res.type };
+
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      throw new Error('Koneksi ke Apps Script terlalu lama. Coba lagi dan pastikan Web App aktif.');
+    }
+    throw new Error(
+      'Tidak dapat menghubungi Google Apps Script. Pastikan URL Web App benar, deployment masih aktif, dan akses Web App diatur ke siapa saja yang memiliki akses. Detail: ' +
+      (error?.message || 'Failed to fetch')
+    );
   } finally {
     clearTimeout(timeout);
   }
@@ -4894,7 +4936,8 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = document.getElementById('pName').value;
   const price = document.getElementById('pPrice').value;
-  const stock = document.getElementById('pStock').value;
+  const stockType = document.getElementById('pStockType').value || 'TERBATAS';
+  const stock = stockType === 'TIDAK_TERHINGGA' ? '-' : document.getElementById('pStock').value;
   const category = document.getElementById('pCategory').value;
   const salesType = document.getElementById('pSalesType').value;
   const sku = document.getElementById('pSku').value || `NS-${Date.now()}`;
@@ -4919,6 +4962,7 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
       NAMA_PRODUK: name,
       HARGA_SATUAN: price,
       STOK_PRODUK: stock,
+      JENIS_STOK: stockType,
       KATEGORI: category,
       JENIS_PENJUALAN: salesType,
       KODE_PRODUK: sku,
@@ -4979,6 +5023,7 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
           name,
           price: +price,
           stock: String(stock).trim() === '-' ? '-' : +stock,
+          stockType: stockType,
           category,
           salesType,
           sku,
@@ -4994,6 +5039,7 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
         salesType: salesType,
         price: +price,
         stock: String(stock).trim() === '-' ? '-' : +stock,
+        stockType: stockType,
         sku: sku,
         barcode: sku,
         image: uploadedImageBase64,
@@ -5040,7 +5086,10 @@ function editGASProduct(index) {
   
   document.getElementById('pName').value = p.NAMA_PRODUK || p.name || '';
   document.getElementById('pPrice').value = p.HARGA_SATUAN || p.price || '';
-  document.getElementById('pStock').value = p.STOK_PRODUK || p.stock || '';
+  const detectedStockType = normalizeStockType(p);
+  document.getElementById('pStockType').value = detectedStockType;
+  document.getElementById('pStock').value = detectedStockType === 'TIDAK_TERHINGGA' ? '' : (p.STOK_PRODUK || p.stock || '');
+  toggleStockInput();
   
   const cat = p.KATEGORI || p.category || '';
   if (cat && !categories.includes(cat)) {
@@ -5185,7 +5234,8 @@ async function fetchProductsFromGASDirect() {
           category: cat,
           salesType: p.JENIS_PENJUALAN || p.salesType || '',
           price: +p.HARGA_SATUAN || 0,
-          stock: +p.STOK_PRODUK || 0,
+          stockType: normalizeStockType(p),
+          stock: normalizeStockType(p) === 'TIDAK_TERHINGGA' ? '-' : (+p.STOK_PRODUK || 0),
           sku: p.KODE_PRODUK || '-',
           barcode: p.KODE_PRODUK || '-',
           image: normalizeProductImageUrl(p.URL_GAMBAR || ''), // URL Google Drive dinormalisasi
@@ -5582,14 +5632,21 @@ function updateOrderProductFilters() {
 }
 
 // =====================================================
-// SISTEM STOK: tanda "-" berarti stok tidak terhingga.
+// SISTEM 2 JENIS STOK
+// TERBATAS = stok fisik terbatas, dapat di-refund.
+// TIDAK_TERHINGGA = produk/jasa tanpa batas stok, tidak dapat di-refund.
 // =====================================================
-function isUnlimitedStock(product) {
-  return String(product?.stock ?? '').trim() === '-';
+function normalizeStockType(product) {
+  const raw = String(product?.JENIS_STOK ?? product?.jenisStok ?? product?.stockType ?? '').trim().toUpperCase();
+  if (raw === 'TIDAK_TERHINGGA' || raw === 'UNLIMITED' || raw === 'INFINITE' ||
+      String(product?.STOK_PRODUK ?? product?.stock ?? '').trim() === '-') return 'TIDAK_TERHINGGA';
+  return 'TERBATAS';
 }
-
+function isUnlimitedStock(product) { return normalizeStockType(product) === 'TIDAK_TERHINGGA'; }
+function isRefundableStock(product) { return normalizeStockType(product) === 'TERBATAS'; }
 function getNumericStock(product) {
-  const value = Number(product?.stock);
+  if (isUnlimitedStock(product)) return Infinity;
+  const value = Number(product?.STOK_PRODUK ?? product?.stock);
   return Number.isFinite(value) ? value : 0;
 }
 
@@ -5711,20 +5768,18 @@ function openSalesCartFromProduct() {
     toggleSalesCartPanel();
   }
 }
-function toggleCart(id) { 
-  const p = products.find(x=>x.id===id); 
-  if (!p || p.stock <= 0) {
+function toggleCart(id) {
+  const p = products.find(x => String(x.id) === String(id));
+  if (!p) return showToast('Produk Tidak Ditemukan', 'Produk tidak tersedia.', 'red');
+  if (!isUnlimitedStock(p) && getNumericStock(p) <= 0) {
     showToast('Stok Habis', 'Produk ini tidak dapat dipesan karena stok habis.', 'red');
-    return; 
+    return;
   }
-  
-  const existing = cart.find(c=>c.id===id); 
-  if(existing) cart = cart.filter(c=>c.id!==id); 
-  else { 
-    cart.push({id:p.id, name:p.name, price:p.price, qty:1}); 
-  } 
-  renderOrderProducts(); 
-  renderSummary(); 
+  const existing = cart.find(c => String(c.id) === String(id));
+  if (existing) cart = cart.filter(c => String(c.id) !== String(id));
+  else cart.push({id:p.id, name:p.name, price:p.price, qty:1, stockType:normalizeStockType(p)});
+  renderOrderProducts();
+  renderSummary();
 }
 function removeFromCart(id) {
   cart = (cart || []).filter(c => String(c.id) !== String(id));
@@ -6229,7 +6284,6 @@ async function postGAS(payload) {
       mode:'no-cors',
       cache:'no-store',
       redirect:'follow',
-      keepalive:true,
       signal:controller.signal,
       headers:{'Content-Type':'text/plain;charset=utf-8'},
       body:JSON.stringify(payload)
@@ -6318,7 +6372,8 @@ async function processPayment() {
     // Simpan juga nama produk agar History dapat langsung menampilkannya.
     NAMA_PRODUK: String(item.name || products.find(p => String(p.id) === String(item.id))?.name || ''),
     HARGA_SATUAN: Number(item.price || 0),
-    JUMLAH: Number(item.qty || 0)
+    JUMLAH: Number(item.qty || 0),
+    JENIS_STOK: normalizeStockType(products.find(p => String(p.id) === String(item.id)) || item)
   }));
 
   // ID dibuat dari aplikasi dan dikirim ke Code.gs agar nomor pada resi
@@ -7386,6 +7441,8 @@ async function refundTransaction(idPesanan) {
           _refundKey: String(detail.ID_DETAIL || `ROW_${index}_${productId}`),
           _productId: productId,
           _productName: product?.name || detail.NAMA_PRODUK || `Produk ${productId}`,
+          _stockType: normalizeStockType({JENIS_STOK: detail.JENIS_STOK || detail.jenisStok || product?.stockType, STOK_PRODUK: detail.STOK_PRODUK ?? product?.stock}),
+          _refundable: normalizeStockType({JENIS_STOK: detail.JENIS_STOK || detail.jenisStok || product?.stockType, STOK_PRODUK: detail.STOK_PRODUK ?? product?.stock}) === 'TERBATAS',
           _originalQty: Number(detail.JUMLAH || detail.QTY || 0),
           _price: Number(detail.HARGA_SATUAN || detail.HARGA || 0),
           _remainingQty: Number(detail.JUMLAH || detail.QTY || 0)
@@ -7425,18 +7482,10 @@ function renderPartialRefundItems() {
         <strong>${item._originalQty}</strong>
       </td>
       <td class="text-center">
-        <input
-          type="number"
-          min="0"
-          max="${item._originalQty}"
-          value="${item._remainingQty}"
-          class="form-control refund-qty-input"
-          data-refund-index="${index}"
-          oninput="updatePartialRefundQuantity(${index}, this.value)"
-        >
+        ${item._refundable ? `<input type="number" min="0" max="${item._originalQty}" value="${item._remainingQty}" class="form-control refund-qty-input" data-refund-index="${index}" oninput="updatePartialRefundQuantity(${index}, this.value)">` : `<span class="badge-soft badge-slate">Tidak dapat di-refund</span>`}
       </td>
       <td class="text-center">
-        <span class="badge-soft badge-red" id="refundQty_${index}">0</span>
+        <span class="badge-soft ${item._refundable ? 'badge-red' : 'badge-slate'}" id="refundQty_${index}">0</span>
       </td>
     </tr>
   `).join('');
@@ -7448,6 +7497,7 @@ function updatePartialRefundQuantity(index, value) {
   if (!activeRefundTransaction) return;
 
   const item = activeRefundTransaction.details[index];
+  if (!item || !item._refundable) return;
   let remaining = Number(value);
 
   if (!Number.isFinite(remaining)) remaining = item._originalQty;
@@ -7471,13 +7521,11 @@ function updatePartialRefundSummary() {
   let changed = false;
 
   activeRefundTransaction.details.forEach((item, index) => {
-    const refundQty = Math.max(0, item._originalQty - item._remainingQty);
-
+    const refundQty = item._refundable ? Math.max(0, item._originalQty - item._remainingQty) : 0;
     totalBefore += item._originalQty * item._price;
-    totalAfter += item._remainingQty * item._price;
+    totalAfter += (item._refundable ? item._remainingQty : item._originalQty) * item._price;
     totalRefundQty += refundQty;
-
-    if (refundQty > 0) changed = true;
+    if (item._refundable && refundQty > 0) changed = true;
 
     const badge = document.getElementById(`refundQty_${index}`);
     if (badge) badge.textContent = refundQty;
@@ -7492,7 +7540,7 @@ function updatePartialRefundSummary() {
 
 function getRefundStockMap(refundItems) {
   const map = new Map();
-  refundItems.forEach(item => {
+  refundItems.filter(item => String(item.JENIS_STOK || 'TERBATAS').toUpperCase() === 'TERBATAS').forEach(item => {
     const productId = String(item.ID_PRODUK || '').trim();
     const qty = Math.max(0, Number(item.JUMLAH_REFUND || 0));
     if (!productId || qty <= 0) return;
@@ -7554,7 +7602,7 @@ async function submitPartialRefund() {
     return showToast('Data Tidak Ada', 'Silakan pilih transaksi kembali.', 'red');
   }
 
-  const refundItems = activeRefundTransaction.details.map(item => {
+  const refundItems = activeRefundTransaction.details.filter(item => item._refundable).map(item => {
     const jumlahSebelumnya = Number(item._originalQty) || 0;
     const sisaJumlah = Number(item._remainingQty) || 0;
     const jumlahRefund = Math.max(0, jumlahSebelumnya - sisaJumlah);
@@ -7570,7 +7618,8 @@ async function submitPartialRefund() {
       SISA_JUMLAH: sisaJumlah,
 
       // PENTING: hanya jumlah ini yang boleh dikembalikan ke stok
-      JUMLAH_REFUND: jumlahRefund
+      JUMLAH_REFUND: jumlahRefund,
+      JENIS_STOK: 'TERBATAS'
     };
   });
 
@@ -7678,7 +7727,10 @@ async function submitPartialRefund() {
 
 
 document.addEventListener('input', (e) => { if (e.target.id === 'orderSearch') renderOrderProducts(); });
-window.addEventListener('DOMContentLoaded', () => updateSalesCartVisibility());
+window.addEventListener('DOMContentLoaded', () => {
+  updateSalesCartVisibility();
+  toggleStockInput();
+});
 
 function openScanner(mode) { 
   scanMode = mode; 
@@ -7700,7 +7752,7 @@ function processScannedBarcode(code) {
     if (scanMode === 'order') {
       const p = products.find(x => x.sku === code || x.barcode === code);
       if (p) {
-        if (p.stock <= 0) {
+        if (!isUnlimitedStock(p) && getNumericStock(p) <= 0) {
           showToast('Stok Habis', `Produk ${p.name} tidak dapat dipesan karena stok habis.`, 'red');
         } else {
           toggleCart(p.id);
@@ -7715,7 +7767,9 @@ function processScannedBarcode(code) {
         editingId = p.id;
         document.getElementById('pName').value = p.name || '';
         document.getElementById('pPrice').value = p.price || '';
-        document.getElementById('pStock').value = p.stock || '';
+        document.getElementById('pStockType').value = normalizeStockType(p);
+        document.getElementById('pStock').value = isUnlimitedStock(p) ? '' : (p.stock || '');
+        toggleStockInput();
         
         const cat = p.category || '';
         if (cat && !categories.includes(cat)) {

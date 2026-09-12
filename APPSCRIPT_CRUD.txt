@@ -27,7 +27,7 @@
 const CONFIG = {
 
   // ID GOOGLE SPREADSHEET
-  SPREADSHEET_ID: '1xpQKcjU3rmirkh5MNm-Pn9gfOiy9sraFsHfkOacoAbc',
+  SPREADSHEET_ID: '15rgpyIHQerLAiGRk2xPbszk7B-xtKi5WbT4j51cKJec',
 
   // NAMA SHEET
   SHEET_NAME: 'Input_Produk',
@@ -39,7 +39,7 @@ const CONFIG = {
   IMAGE_FIELD: 'URL_GAMBAR',
 
   // ID FOLDER GOOGLE DRIVE
-  IMAGE_FOLDER_ID: '1gAOvnh_q5GQSeznd0cgBrzq40CFOplry',
+  IMAGE_FOLDER_ID: '1-eM7AgJruYv-hHddp8WuEFFZAhCWv4JM',
 
   // ==================================================
   // DATABASE TRANSAKSI
@@ -50,6 +50,7 @@ const CONFIG = {
   // ID relasi produk tetap menggunakan ID_RING
   PRODUCT_ID_FIELD: 'ID_RING',
   PRODUCT_STOCK_FIELD: 'STOK_PRODUK',
+  PRODUCT_STOCK_TYPE_FIELD: 'JENIS_STOK',
 
   // ==================================================
   // DATABASE LOGIN / PASSWORD
@@ -441,6 +442,7 @@ function getSheet() {
 function getHeaders() {
 
   const sheet = getSheet();
+  ensureHeader(sheet, CONFIG.PRODUCT_STOCK_TYPE_FIELD);
 
   const lastColumn =
     sheet.getLastColumn();
@@ -1553,6 +1555,22 @@ function generateDetailId() {
 
 
 // ==================================================
+// JENIS STOK
+// ==================================================
+function normalizeStockType(value, stockValue) {
+  const type = String(value || '').trim().toUpperCase();
+  if (type === 'TIDAK_TERHINGGA' || type === 'UNLIMITED' || type === 'INFINITE' || String(stockValue || '').trim() === '-') {
+    return 'TIDAK_TERHINGGA';
+  }
+  return 'TERBATAS';
+}
+function ensureHeader(sheet, headerName) {
+  const lastColumn = sheet.getLastColumn();
+  const headers = lastColumn > 0 ? sheet.getRange(1,1,1,lastColumn).getValues()[0].map(String) : [];
+  if (headers.indexOf(headerName) === -1) sheet.getRange(1,lastColumn+1).setValue(headerName);
+}
+
+// ==================================================
 // AMBIL INDEX PRODUK BERDASARKAN ID_RING
 // ==================================================
 function getProductRowMap() {
@@ -1575,6 +1593,15 @@ function getProductRowMap() {
       [
         CONFIG.PRODUCT_STOCK_FIELD,
         'STOK'
+      ]
+    );
+
+  const stockTypeIndex =
+    findHeaderIndex(
+      headers,
+      [
+        CONFIG.PRODUCT_STOCK_TYPE_FIELD,
+        'JENIS_STOK'
       ]
     );
 
@@ -1620,6 +1647,7 @@ function getProductRowMap() {
       headers: headers,
       idIndex: idIndex,
       stockIndex: stockIndex,
+      stockTypeIndex: stockTypeIndex,
       priceIndex: priceIndex,
       nameIndex: nameIndex,
       products: map
@@ -1648,6 +1676,7 @@ function getProductRowMap() {
         rowNumber: index + 2,
         row: row,
         stock: Number(row[stockIndex]) || 0,
+        stockType: stockTypeIndex > -1 ? normalizeStockType(row[stockTypeIndex], row[stockIndex]) : normalizeStockType('', row[stockIndex]),
         price:
           priceIndex > -1
             ? Number(row[priceIndex]) || 0
@@ -1836,7 +1865,10 @@ function createTransaction(data) {
           );
         }
 
+        const stockType = normalizeStockType(product.stockType, product.row[productData.stockIndex]);
+
         if (
+          stockType === 'TERBATAS' &&
           product.stock <
           groupedItem.quantity
         ) {
@@ -1877,7 +1909,8 @@ function createTransaction(data) {
             price *
             groupedItem.quantity,
           rowNumber: product.rowNumber,
-          currentStock: product.stock
+          currentStock: product.stock,
+          stockType: stockType
         });
 
       }
@@ -1920,6 +1953,8 @@ function createTransaction(data) {
       getSheetByName(
         CONFIG.DETAIL_ORDER_SHEET_NAME
       );
+
+    ensureHeader(detailSheet, CONFIG.PRODUCT_STOCK_TYPE_FIELD);
 
     const orderHeaders =
       getSheetHeaders(orderSheet);
@@ -1981,7 +2016,8 @@ function createTransaction(data) {
             ID_RING: item.productId,
             HARGA_SATUAN: item.price,
             JUMLAH: item.quantity,
-            SUBTOTAL: item.subtotal
+            SUBTOTAL: item.subtotal,
+            JENIS_STOK: item.stockType
           };
 
           return buildRowFromHeaders(
@@ -2008,18 +2044,11 @@ function createTransaction(data) {
     // =================================================
     normalizedItems.forEach(
       function(item) {
-
-        const newStock =
-          item.currentStock -
-          item.quantity;
-
+        if (item.stockType !== 'TERBATAS') return;
+        const newStock = item.currentStock - item.quantity;
         productData.sheet
-          .getRange(
-            item.rowNumber,
-            productData.stockIndex + 1
-          )
+          .getRange(item.rowNumber, productData.stockIndex + 1)
           .setValue(newStock);
-
       }
     );
 
@@ -2360,6 +2389,7 @@ function refundTransaction(transactionId, refundData) {
     const detailPriceIndex = findHeaderIndex(detailHeaders, ['HARGA_SATUAN', 'HARGA']);
     const detailQuantityIndex = findHeaderIndex(detailHeaders, ['JUMLAH', 'QTY']);
     const detailSubtotalIndex = findHeaderIndex(detailHeaders, ['SUBTOTAL']);
+    const detailStockTypeIndex = findHeaderIndex(detailHeaders, ['JENIS_STOK']);
 
     if (
       orderIdIndex === -1 ||
@@ -2416,6 +2446,7 @@ function refundTransaction(transactionId, refundData) {
 
     const detailValues = detailSheet.getDataRange().getValues();
 
+    const productDataForRefund = getProductRowMap();
     const groupedRefund = {};
     const detailUpdates = [];
 
@@ -2436,6 +2467,7 @@ function refundTransaction(transactionId, refundData) {
 
       const productId = String(row[detailProductIdIndex]).trim();
       const oldQuantity = Number(row[detailQuantityIndex]) || 0;
+      const detailStockType = detailStockTypeIndex > -1 ? normalizeStockType(row[detailStockTypeIndex], '') : '';
 
       const detailId =
         detailIdIndex > -1
@@ -2454,6 +2486,12 @@ function refundTransaction(transactionId, refundData) {
         });
       }
 
+      const productForRefund = productDataForRefund.products[productId];
+      const effectiveStockType = detailStockType || normalizeStockType(
+        productForRefund ? productForRefund.stockType : '',
+        productForRefund ? productForRefund.row[productDataForRefund.stockIndex] : ''
+      );
+
       /*
        * LOGIKA REFUND BERTAHAP
        * ======================
@@ -2468,8 +2506,12 @@ function refundTransaction(transactionId, refundData) {
       let remainingQuantity = oldQuantity;
       let refundQuantity = 0;
 
-      if (requestedItems.length === 0) {
-        // Tetap kompatibel dengan sistem lama: tanpa detail berarti refund penuh.
+      if (effectiveStockType !== 'TERBATAS') {
+        // Produk/jasa tanpa batas stok tidak pernah dapat di-refund.
+        refundQuantity = 0;
+        remainingQuantity = oldQuantity;
+
+      } else if (requestedItems.length === 0) {
         refundQuantity = oldQuantity;
         remainingQuantity = 0;
 
@@ -2563,7 +2605,7 @@ function refundTransaction(transactionId, refundData) {
     }
 
     // Kembalikan stok hanya sesuai jumlah yang di-refund.
-    const productData = getProductRowMap();
+    const productData = productDataForRefund;
 
     Object.keys(groupedRefund).forEach(function(productId) {
 
@@ -2645,6 +2687,7 @@ function refundTransaction(transactionId, refundData) {
 
   }
 }
+
 
 
 
