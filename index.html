@@ -4939,8 +4939,12 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
     
     await fetchProductsFromGAS();
 
-    showToast('Berhasil', isEditing ? 'Produk berhasil diperbarui. Aplikasi akan diperbarui otomatis.' : 'Produk berhasil disimpan. Aplikasi akan diperbarui otomatis.', 'success');
-    autoRefreshApplication(1200, 'produk');
+    // INPUT PRODUK: SIMPAN dan UPDATE cukup memperbarui data/menu produk,
+    // tanpa reload seluruh aplikasi agar posisi halaman dan koneksi perangkat tetap aman.
+    showToast('Berhasil', isEditing ? 'Produk berhasil diperbarui.' : 'Produk berhasil disimpan.', 'success');
+    if (typeof filterGASProductsTable === 'function') filterGASProductsTable();
+    if (typeof renderOrderProducts === 'function') renderOrderProducts();
+    if (typeof loadDashboard === 'function') Promise.resolve(loadDashboard()).catch(()=>{});
     
   } catch (error) {
     console.error('CRUD Produk Error:', error);
@@ -7588,7 +7592,10 @@ async function submitPartialRefund() {
       'slate'
     );
 
-    autoRefreshApplication(1500, 'history-transaksi');
+    // REFUND: sinkronisasi data dilakukan langsung tanpa reload halaman.
+    // History dan stok sudah diperbarui di atas sehingga tidak perlu window.location.reload().
+    if (typeof renderOrderProducts === 'function') renderOrderProducts();
+    if (typeof loadDashboard === 'function') Promise.resolve(loadDashboard()).catch(()=>{});
 
   } catch (error) {
     console.error(error);
