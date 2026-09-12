@@ -4978,7 +4978,7 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
           ...products[idx],
           name,
           price: +price,
-          stock: +stock,
+          stock: String(stock).trim() === '-' ? '-' : +stock,
           category,
           salesType,
           sku,
@@ -4993,7 +4993,7 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
         category: category,
         salesType: salesType,
         price: +price,
-        stock: +stock,
+        stock: String(stock).trim() === '-' ? '-' : +stock,
         sku: sku,
         barcode: sku,
         image: uploadedImageBase64,
@@ -5199,7 +5199,7 @@ async function fetchProductsFromGASDirect() {
       let cartChanged = false;
       cart = cart.filter(c => {
           const p = products.find(x => x.id === c.id);
-          if (!p || p.stock <= 0) { cartChanged = true; return false; }
+          if (!p || (!isUnlimitedStock(p) && getNumericStock(p) <= 0)) { cartChanged = true; return false; }
           if (c.qty > p.stock) { c.qty = p.stock; cartChanged = true; }
           return true;
       });
@@ -5581,6 +5581,18 @@ function updateOrderProductFilters() {
   }
 }
 
+// =====================================================
+// SISTEM STOK: tanda "-" berarti stok tidak terhingga.
+// =====================================================
+function isUnlimitedStock(product) {
+  return String(product?.stock ?? '').trim() === '-';
+}
+
+function getNumericStock(product) {
+  const value = Number(product?.stock);
+  return Number.isFinite(value) ? value : 0;
+}
+
 function renderOrderProducts() {
   const container = document.getElementById('orderProductList');
   if (!container) return;
@@ -5627,7 +5639,8 @@ function renderOrderProducts() {
   container.innerHTML = filteredProducts.map(p => {
     const imageUrl = normalizeProductImageUrl(p.image || '');
     const cartItem = (cart || []).find(c => String(c.id) === String(p.id));
-    const stock = Number(p.stock || 0);
+    const unlimitedStock = isUnlimitedStock(p);
+    const stock = unlimitedStock ? null : getNumericStock(p);
     const safeId = String(p.id).replace(/'/g, "\\'");
 
     const imageHtml = imageUrl
@@ -5640,7 +5653,7 @@ function renderOrderProducts() {
 
     let actionHtml = '';
 
-    if (stock <= 0) {
+    if (!unlimitedStock && stock <= 0) {
       actionHtml = `
         <button class="btn btn-outline-secondary btn-sm w-100" disabled>
           <i class="bi bi-x-circle me-1"></i> Stok Habis
@@ -5681,7 +5694,7 @@ function renderOrderProducts() {
           </div>
 
           <div class="sales-product-stock">
-            Stok tersedia: ${stock}
+            Stok tersedia: ${unlimitedStock ? 'Tidak Terhingga' : stock}
           </div>
 
           ${actionHtml}
@@ -5733,7 +5746,7 @@ function changeQty(id, delta) {
     return;
   }
 
-  if (newQty > Number(p.stock || 0)) {
+  if (!isUnlimitedStock(p) && newQty > getNumericStock(p)) {
     showToast(
       'Stok Tidak Cukup',
       `Stok ${p.name} hanya tersisa ${p.stock}.`,
@@ -6265,7 +6278,7 @@ async function processPayment() {
     if (Number(item.qty || 0) <= 0) {
       return showToast('Jumlah Tidak Valid', 'Jumlah produk harus lebih dari 0.', 'red');
     }
-    if (Number(item.qty || 0) > Number(product.stock || 0)) {
+    if (!isUnlimitedStock(product) && Number(item.qty || 0) > getNumericStock(product)) {
       return showToast(
         'Stok Tidak Mencukupi',
         `Stok ${product.name} hanya tersedia ${product.stock}.`,
@@ -6392,7 +6405,7 @@ async function processPayment() {
       return {
         id: product?.id || '',
         qty: Number(item.qty || 0),
-        previousStock: Number(product?.stock || 0)
+        previousStock: isUnlimitedStock(product) ? '-' : getNumericStock(product)
       };
     });
 
@@ -6400,7 +6413,7 @@ async function processPayment() {
     // Tampilan diperbarui langsung, database disinkronkan di background.
     receiptData.items.forEach(item => {
       const product = products.find(p => String(p.name) === String(item.name));
-      if (product) product.stock = Math.max(0, Number(product.stock || 0) - Number(item.qty || 0));
+      if (product && !isUnlimitedStock(product)) product.stock = Math.max(0, getNumericStock(product) - Number(item.qty || 0));
     });
     if (typeof renderOrderProducts === 'function') renderOrderProducts();
 
@@ -7491,11 +7504,11 @@ function getRefundStockMap(refundItems) {
 function applyRefundStockLocally(refundStockMap) {
   refundStockMap.forEach((qty, productId) => {
     const product = products.find(p => String(p.id) === String(productId));
-    if (product) product.stock = Math.max(0, Number(product.stock || 0)) + qty;
+    if (product && !isUnlimitedStock(product)) product.stock = Math.max(0, getNumericStock(product)) + qty;
 
     const gasProduct = gasProducts.find(p => String(p.ID_RING || p.id) === String(productId));
     if (gasProduct) {
-      gasProduct.STOK_PRODUK = Math.max(0, Number(gasProduct.STOK_PRODUK || gasProduct.stock || 0)) + qty;
+      if (!isUnlimitedStock({ stock: gasProduct.STOK_PRODUK ?? gasProduct.stock })) gasProduct.STOK_PRODUK = Math.max(0, Number(gasProduct.STOK_PRODUK ?? gasProduct.stock ?? 0)) + qty;
     }
   });
 
