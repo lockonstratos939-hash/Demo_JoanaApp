@@ -62,7 +62,15 @@ const CONFIG = {
   // ==================================================
   // PENGATURAN RESI
   // ==================================================
-  RECEIPT_SHEET_NAME: 'Pengaturan_Resi'
+  RECEIPT_SHEET_NAME: 'Pengaturan_Resi',
+
+  // ==================================================
+  // RIWAYAT SNAPSHOT REFUND
+  // Menyimpan kondisi transaksi sebelum dan sesudah refund
+  // agar popup Riwayat Transaksi tetap dapat menampilkan
+  // data historis meskipun Detail_Pesanan sudah diperbarui.
+  // ==================================================
+  REFUND_HISTORY_SHEET_NAME: 'Riwayat_Refund'
 };
 
 
@@ -96,7 +104,7 @@ function doGet(e) {
     switch (action) {
 
       case 'read':
-        return response(readData());
+        return response(readData(e.parameter));
 
       case 'get':
         return response(getData(e.parameter.id));
@@ -198,6 +206,25 @@ function doPost(e) {
       case 'refund':
       case 'refundTransaction':
         return response(refundTransaction(request.id || data.ID_PEMESANAN, data));
+
+      // =================================================
+      // DELETE HISTORY TRANSAKSI
+      // Hapus Pesanan + Detail_Pesanan TANPA mengembalikan stok
+      // Tidak dapat digunakan jika transaksi pernah/sebagian REFUND
+      // =================================================
+      case 'deleteHistory':
+      case 'deleteTransactionHistory':
+        return response(deleteTransactionHistory(request.id || data.ID_PEMESANAN));
+
+      // =================================================
+      // BATALKAN PESANAN
+      // Kembalikan stok TERBATAS lalu hapus Pesanan + Detail_Pesanan
+      // Tidak dapat digunakan jika transaksi pernah/sebagian REFUND
+      // =================================================
+      case 'cancelOrder':
+      case 'cancelTransaction':
+      case 'batalkanPesanan':
+        return response(cancelTransaction(request.id || data.ID_PEMESANAN));
 
       // =================================================
       // LOGIN / PASSWORD
@@ -1954,7 +1981,12 @@ function createTransaction(data) {
         CONFIG.DETAIL_ORDER_SHEET_NAME
       );
 
+    // Pastikan struktur database transaksi lengkap.
     ensureHeader(detailSheet, CONFIG.PRODUCT_STOCK_TYPE_FIELD);
+    ensureHeader(orderSheet, 'STATUS_REFUND');
+    ensureHeader(orderSheet, 'TANGGAL_REFUND');
+    ensureHeader(orderSheet, 'STATUS_PESANAN');
+    ensureHeader(orderSheet, 'TANGGAL_DIBATALKAN');
 
     const orderHeaders =
       getSheetHeaders(orderSheet);
@@ -1991,7 +2023,9 @@ function createTransaction(data) {
       METODE_PEMBAYARAN: paymentMethod,
       STATUS_TRANSAKSI: 'SELESAI',
       STATUS_REFUND: 'TIDAK',
-      TANGGAL_REFUND: ''
+      TANGGAL_REFUND: '',
+      STATUS_PESANAN: 'AKTIF',
+      TANGGAL_DIBATALKAN: ''
     };
 
     // Hanya header yang ada pada sheet yang akan diisi.
@@ -2214,6 +2248,103 @@ function readTransactionHistory(period) {
 
 
 // ==================================================
+// DATABASE RIWAYAT SNAPSHOT REFUND
+// Sheet otomatis:
+// Riwayat_Refund
+// ==================================================
+function getRefundHistorySheet() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  let sheet = ss.getSheetByName(CONFIG.REFUND_HISTORY_SHEET_NAME);
+
+  const headers = [
+    'ID_REFUND',
+    'ID_PEMESANAN',
+    'TANGGAL_REFUND',
+    'STATUS_SEBELUM',
+    'STATUS_SESUDAH',
+    'TOTAL_SEBELUM',
+    'TOTAL_SESUDAH',
+    'DATA_SEBELUM_JSON',
+    'DATA_SESUDAH_JSON',
+    'DATA_REFUND_JSON'
+  ];
+
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.REFUND_HISTORY_SHEET_NAME);
+    sheet.appendRow(headers);
+  } else {
+    headers.forEach(function(header) {
+      ensureHeader(sheet, header);
+    });
+  }
+
+  return sheet;
+}
+
+function safeJsonParse(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  try {
+    return JSON.parse(String(value));
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function saveRefundSnapshot(snapshot) {
+  const sheet = getRefundHistorySheet();
+  const headers = getSheetHeaders(sheet);
+
+  const rowData = {
+    ID_REFUND: snapshot.ID_REFUND,
+    ID_PEMESANAN: snapshot.ID_PEMESANAN,
+    TANGGAL_REFUND: snapshot.TANGGAL_REFUND,
+    STATUS_SEBELUM: snapshot.STATUS_SEBELUM,
+    STATUS_SESUDAH: snapshot.STATUS_SESUDAH,
+    TOTAL_SEBELUM: snapshot.TOTAL_SEBELUM,
+    TOTAL_SESUDAH: snapshot.TOTAL_SESUDAH,
+    DATA_SEBELUM_JSON: JSON.stringify(snapshot.DATA_SEBELUM || {}),
+    DATA_SESUDAH_JSON: JSON.stringify(snapshot.DATA_SESUDAH || {}),
+    DATA_REFUND_JSON: JSON.stringify(snapshot.DATA_REFUND || {})
+  };
+
+  sheet.appendRow(buildRowFromHeaders(headers, rowData));
+}
+
+function getRefundHistoryByTransaction(transactionId) {
+  const sheet = getRefundHistorySheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) return [];
+
+  const headers = getSheetHeaders(sheet);
+  const idIndex = findHeaderIndex(headers, ['ID_PEMESANAN']);
+
+  if (idIndex === -1) return [];
+
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+
+  return values
+    .filter(function(row) {
+      return String(row[idIndex]) === String(transactionId);
+    })
+    .map(function(row) {
+      const item = {};
+      headers.forEach(function(header, index) {
+        item[header] = row[index];
+      });
+
+      item.DATA_SEBELUM = safeJsonParse(item.DATA_SEBELUM_JSON, {});
+      item.DATA_SESUDAH = safeJsonParse(item.DATA_SESUDAH_JSON, {});
+      item.DATA_REFUND = safeJsonParse(item.DATA_REFUND_JSON, {});
+      return item;
+    })
+    .sort(function(a, b) {
+      return new Date(a.TANGGAL_REFUND).getTime() - new Date(b.TANGGAL_REFUND).getTime();
+    });
+}
+
+
+// ==================================================
 // AMBIL DETAIL SATU TRANSAKSI
 // ==================================================
 function getTransactionDetail(transactionId) {
@@ -2335,11 +2466,14 @@ function getTransactionDetail(transactionId) {
 
   }
 
+  const refundHistory = getRefundHistoryByTransaction(transactionId);
+
   return {
     success: true,
     data: {
       order: order,
-      details: details
+      details: details,
+      refundHistory: refundHistory
     }
   };
 
@@ -2373,6 +2507,12 @@ function refundTransaction(transactionId, refundData) {
 
     const orderSheet = getSheetByName(CONFIG.ORDER_SHEET_NAME);
     const detailSheet = getSheetByName(CONFIG.DETAIL_ORDER_SHEET_NAME);
+    const refundHistorySheet = getRefundHistorySheet();
+
+    // Pastikan kolom refund selalu tersedia di database Pesanan.
+    // Jika sebelumnya belum ada, sistem akan membuatnya otomatis.
+    ensureHeader(orderSheet, 'STATUS_REFUND');
+    ensureHeader(orderSheet, 'TANGGAL_REFUND');
 
     const orderHeaders = getSheetHeaders(orderSheet);
     const detailHeaders = getSheetHeaders(detailSheet);
@@ -2381,6 +2521,7 @@ function refundTransaction(transactionId, refundData) {
     const totalPurchaseIndex = findHeaderIndex(orderHeaders, ['TOTAL_PEMBELIAN']);
     const statusTransactionIndex = findHeaderIndex(orderHeaders, ['STATUS_TRANSAKSI']);
     const statusRefundIndex = findHeaderIndex(orderHeaders, ['STATUS_REFUND']);
+    const statusOrderIndex = findHeaderIndex(orderHeaders, ['STATUS_PESANAN']);
     const refundDateIndex = findHeaderIndex(orderHeaders, ['TANGGAL_REFUND']);
 
     const detailIdIndex = findHeaderIndex(detailHeaders, ['ID_DETAIL']);
@@ -2427,6 +2568,11 @@ function refundTransaction(transactionId, refundData) {
         ? String(orderRow[statusTransactionIndex]).toUpperCase()
         : '';
 
+    // Pesanan yang sudah dibatalkan tidak boleh diproses refund lagi.
+    if (isCancelledTransaction(orderRow, statusOrderIndex, statusTransactionIndex)) {
+      throw new Error('Pesanan yang sudah dibatalkan tidak dapat diproses refund.');
+    }
+
     // Jika seluruh transaksi sudah selesai di-refund, tidak dapat diubah lagi.
     if (currentRefundStatus === 'YA' || currentTransactionStatus === 'REFUND') {
       throw new Error('Transaksi ini sudah selesai di-refund.');
@@ -2450,9 +2596,22 @@ function refundTransaction(transactionId, refundData) {
     const groupedRefund = {};
     const detailUpdates = [];
 
+    // Snapshot kondisi transaksi SEBELUM refund.
+    const beforeSnapshot = {
+      order: {
+        ID_PEMESANAN: transactionId,
+        TOTAL_PEMBELIAN: totalPurchaseIndex > -1 ? Number(orderRow[totalPurchaseIndex]) || 0 : 0,
+        STATUS_TRANSAKSI: statusTransactionIndex > -1 ? String(orderRow[statusTransactionIndex] || '') : '',
+        STATUS_REFUND: statusRefundIndex > -1 ? String(orderRow[statusRefundIndex] || '') : '',
+        STATUS_PESANAN: statusOrderIndex > -1 ? String(orderRow[statusOrderIndex] || '') : ''
+      },
+      details: []
+    };
+
     let totalRefundQty = 0;
     let remainingTotalQty = 0;
     let newOrderTotal = 0;
+    let totalNominalRefund = 0;
     let found = false;
 
     for (let i = 1; i < detailValues.length; i++) {
@@ -2473,6 +2632,16 @@ function refundTransaction(transactionId, refundData) {
         detailIdIndex > -1
           ? String(row[detailIdIndex]).trim()
           : '';
+
+      // Simpan kondisi detail sebelum nilai JUMLAH/SUBTOTAL diubah.
+      beforeSnapshot.details.push({
+        ID_DETAIL: detailId,
+        ID_PRODUK: productId,
+        JUMLAH: oldQuantity,
+        HARGA_SATUAN: detailPriceIndex > -1 ? Number(row[detailPriceIndex]) || 0 : 0,
+        SUBTOTAL: detailSubtotalIndex > -1 ? Number(row[detailSubtotalIndex]) || 0 : 0,
+        JENIS_STOK: detailStockType
+      });
 
       let requestItem =
         detailId && requestedByDetail[detailId]
@@ -2506,12 +2675,9 @@ function refundTransaction(transactionId, refundData) {
       let remainingQuantity = oldQuantity;
       let refundQuantity = 0;
 
-      if (effectiveStockType !== 'TERBATAS') {
-        // Produk/jasa tanpa batas stok tidak pernah dapat di-refund.
-        refundQuantity = 0;
-        remainingQuantity = oldQuantity;
-
-      } else if (requestedItems.length === 0) {
+      // Semua jenis stok dapat di-refund secara parsial.
+      // Perbedaannya: hanya stok TERBATAS yang dikembalikan ke inventory.
+      if (requestedItems.length === 0) {
         refundQuantity = oldQuantity;
         remainingQuantity = 0;
 
@@ -2578,12 +2744,19 @@ function refundTransaction(transactionId, refundData) {
           : 0;
 
       const newSubtotal = price * remainingQuantity;
+      const nominalRefund = price * refundQuantity;
+
+      totalNominalRefund += nominalRefund;
 
       if (refundQuantity > 0) {
-        groupedRefund[productId] =
-          (groupedRefund[productId] || 0) + refundQuantity;
-
+        // Semua produk dihitung sebagai jumlah refund.
         totalRefundQty += refundQuantity;
+
+        // Hanya produk dengan stok TERBATAS yang dikembalikan ke inventory.
+        if (effectiveStockType === 'TERBATAS') {
+          groupedRefund[productId] =
+            (groupedRefund[productId] || 0) + refundQuantity;
+        }
       }
 
       remainingTotalQty += remainingQuantity;
@@ -2591,6 +2764,12 @@ function refundTransaction(transactionId, refundData) {
 
       detailUpdates.push({
         rowNumber: i + 1,
+        detailId: detailId,
+        productId: productId,
+        stockType: effectiveStockType,
+        price: price,
+        originalQuantity: oldQuantity,
+        refundQuantity: refundQuantity,
         remainingQuantity: remainingQuantity,
         newSubtotal: newSubtotal
       });
@@ -2661,24 +2840,98 @@ function refundTransaction(transactionId, refundData) {
         .setValue(fullRefund ? 'YA' : 'SEBAGIAN');
     }
 
-    if (refundDateIndex > -1) {
-      orderSheet
-        .getRange(orderRowNumber, refundDateIndex + 1)
-        .setValue(new Date());
+    // =================================================
+    // SIMPAN TANGGAL & JAM REFUND KE DATABASE
+    // =================================================
+    // Setiap proses refund (penuh maupun sebagian) akan mencatat
+    // waktu refund pada kolom TANGGAL_REFUND di sheet Pesanan.
+    const refundTimestamp = new Date();
+
+    if (refundDateIndex === -1) {
+      throw new Error('Kolom TANGGAL_REFUND tidak ditemukan pada sheet Pesanan.');
     }
+
+    const refundDateCell = orderSheet.getRange(
+      orderRowNumber,
+      refundDateIndex + 1
+    );
+
+    refundDateCell
+      .setValue(refundTimestamp)
+      .setNumberFormat('dd/MM/yyyy HH:mm:ss');
+
+    // Snapshot kondisi SESUDAH refund.
+    const afterSnapshot = {
+      order: {
+        ID_PEMESANAN: transactionId,
+        TOTAL_PEMBELIAN: newOrderTotal,
+        STATUS_TRANSAKSI: fullRefund ? 'REFUND' : 'SEBAGIAN REFUND',
+        STATUS_REFUND: fullRefund ? 'YA' : 'SEBAGIAN',
+        STATUS_PESANAN: statusOrderIndex > -1 ? String(orderRow[statusOrderIndex] || '') : ''
+      },
+      details: detailUpdates.map(function(item) {
+        return {
+          ID_DETAIL: item.detailId,
+          ID_PRODUK: item.productId,
+          JUMLAH: item.remainingQuantity,
+          HARGA_SATUAN: item.price,
+          SUBTOTAL: item.newSubtotal,
+          JENIS_STOK: item.stockType
+        };
+      })
+    };
+
+    const refundDetailSnapshot = detailUpdates
+      .filter(function(item) { return item.refundQuantity > 0; })
+      .map(function(item) {
+        return {
+          ID_DETAIL: item.detailId,
+          ID_PRODUK: item.productId,
+          JUMLAH_SEBELUM: item.originalQuantity,
+          JUMLAH_REFUND: item.refundQuantity,
+          JUMLAH_SESUDAH: item.remainingQuantity,
+          HARGA_SATUAN: item.price,
+          NOMINAL_REFUND: item.price * item.refundQuantity,
+          JENIS_STOK: item.stockType
+        };
+      });
+
+    // Simpan satu baris histori untuk SETIAP proses refund.
+    saveRefundSnapshot({
+      ID_REFUND: 'RFD-' + Utilities.getUuid().slice(0, 8).toUpperCase(),
+      ID_PEMESANAN: transactionId,
+      TANGGAL_REFUND: refundTimestamp,
+      STATUS_SEBELUM: beforeSnapshot.order.STATUS_TRANSAKSI || 'BERHASIL',
+      STATUS_SESUDAH: afterSnapshot.order.STATUS_TRANSAKSI,
+      TOTAL_SEBELUM: beforeSnapshot.order.TOTAL_PEMBELIAN,
+      TOTAL_SESUDAH: afterSnapshot.order.TOTAL_PEMBELIAN,
+      DATA_SEBELUM: beforeSnapshot,
+      DATA_SESUDAH: afterSnapshot,
+      DATA_REFUND: {
+        TOTAL_QTY_REFUND: totalRefundQty,
+        TOTAL_NOMINAL_REFUND: totalNominalRefund,
+        ITEMS: refundDetailSnapshot
+      }
+    });
 
     SpreadsheetApp.flush();
 
     return {
       success: true,
       message: fullRefund
-        ? 'Refund penuh berhasil. Semua stok telah dikembalikan.'
-        : 'Refund sebagian berhasil. Stok dikembalikan sesuai jumlah refund.',
+        ? 'Refund penuh berhasil.'
+        : 'Refund sebagian berhasil. Nominal berkurang sesuai jumlah refund.',
       ID_PEMESANAN: transactionId,
       totalRefundQty: totalRefundQty,
+      totalNominalRefund: totalNominalRefund,
       stokDikembalikan: groupedRefund,
       totalSetelahRefund: newOrderTotal,
-      statusRefund: fullRefund ? 'YA' : 'SEBAGIAN'
+      statusRefund: fullRefund ? 'YA' : 'SEBAGIAN',
+      TANGGAL_REFUND: Utilities.formatDate(
+        refundTimestamp,
+        Session.getScriptTimeZone(),
+        'dd/MM/yyyy HH:mm:ss'
+      )
     };
 
   } finally {
@@ -2691,3 +2944,443 @@ function refundTransaction(transactionId, refundData) {
 
 
 
+
+
+// ==================================================
+// VALIDASI STATUS TRANSAKSI YANG SUDAH REFUND
+// ==================================================
+function isRefundedTransaction(orderRow, statusTransactionIndex, statusRefundIndex) {
+  const statusTransaction = statusTransactionIndex > -1
+    ? String(orderRow[statusTransactionIndex] || '').trim().toUpperCase()
+    : '';
+
+  const statusRefund = statusRefundIndex > -1
+    ? String(orderRow[statusRefundIndex] || '').trim().toUpperCase()
+    : '';
+
+  return (
+    statusTransaction === 'REFUND' ||
+    statusTransaction === 'SEBAGIAN REFUND' ||
+    statusRefund === 'YA' ||
+    statusRefund === 'SEBAGIAN'
+  );
+}
+
+
+// ==================================================
+// VALIDASI STATUS PESANAN DIBATALKAN
+// ==================================================
+function isCancelledTransaction(orderRow, statusOrderIndex, statusTransactionIndex) {
+  const statusOrder = statusOrderIndex > -1
+    ? String(orderRow[statusOrderIndex] || '').trim().toUpperCase()
+    : '';
+
+  const statusTransaction = statusTransactionIndex > -1
+    ? String(orderRow[statusTransactionIndex] || '').trim().toUpperCase()
+    : '';
+
+  return statusOrder === 'DIBATALKAN' || statusTransaction === 'DIBATALKAN';
+}
+
+
+// ==================================================
+// CARI BARIS PESANAN BERDASARKAN ID_PEMESANAN
+// ==================================================
+function findOrderTransaction(transactionId) {
+  const orderSheet = getSheetByName(CONFIG.ORDER_SHEET_NAME);
+  const headers = getSheetHeaders(orderSheet);
+  const idIndex = findHeaderIndex(headers, ['ID_PEMESANAN']);
+
+  if (idIndex === -1) {
+    throw new Error('Kolom ID_PEMESANAN tidak ditemukan pada sheet Pesanan.');
+  }
+
+  const lastRow = orderSheet.getLastRow();
+  if (lastRow < 2) {
+    throw new Error('Data transaksi tidak ditemukan.');
+  }
+
+  const values = orderSheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][idIndex]).trim() === String(transactionId).trim()) {
+      return {
+        sheet: orderSheet,
+        headers: headers,
+        idIndex: idIndex,
+        rowNumber: i + 2,
+        row: values[i]
+      };
+    }
+  }
+
+  throw new Error('Transaksi dengan ID "' + transactionId + '" tidak ditemukan.');
+}
+
+
+// ==================================================
+// HAPUS HISTORY TRANSAKSI
+//
+// LOGIKA:
+// - Hapus Detail_Pesanan
+// - Hapus Pesanan
+// - STOK TIDAK dikembalikan
+// - BLOK jika status REFUND / SEBAGIAN REFUND
+// ==================================================
+function deleteTransactionHistory(transactionId) {
+  if (!transactionId) {
+    throw new Error('ID_PEMESANAN wajib diisi.');
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const orderInfo = findOrderTransaction(transactionId);
+    const statusTransactionIndex = findHeaderIndex(orderInfo.headers, ['STATUS_TRANSAKSI']);
+    const statusRefundIndex = findHeaderIndex(orderInfo.headers, ['STATUS_REFUND']);
+
+    if (isRefundedTransaction(orderInfo.row, statusTransactionIndex, statusRefundIndex)) {
+      throw new Error('History transaksi tidak dapat dihapus karena transaksi ini sudah memiliki status REFUND atau SEBAGIAN REFUND.');
+    }
+
+    const detailSheet = getSheetByName(CONFIG.DETAIL_ORDER_SHEET_NAME);
+    const detailHeaders = getSheetHeaders(detailSheet);
+    const detailOrderIdIndex = findHeaderIndex(detailHeaders, ['ID_PEMESANAN']);
+
+    if (detailOrderIdIndex === -1) {
+      throw new Error('Kolom ID_PEMESANAN tidak ditemukan pada sheet Detail_Pesanan.');
+    }
+
+    // Hapus detail dari bawah ke atas agar nomor baris tidak bergeser.
+    const detailLastRow = detailSheet.getLastRow();
+    let deletedDetails = 0;
+
+    if (detailLastRow >= 2) {
+      const detailValues = detailSheet.getRange(2, 1, detailLastRow - 1, detailHeaders.length).getValues();
+      const rowsToDelete = [];
+
+      detailValues.forEach(function(row, index) {
+        if (String(row[detailOrderIdIndex]).trim() === String(transactionId).trim()) {
+          rowsToDelete.push(index + 2);
+        }
+      });
+
+      rowsToDelete.sort(function(a, b) { return b - a; }).forEach(function(rowNumber) {
+        detailSheet.deleteRow(rowNumber);
+        deletedDetails++;
+      });
+    }
+
+    // Hapus header transaksi terakhir.
+    orderInfo.sheet.deleteRow(orderInfo.rowNumber);
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      message: 'History transaksi berhasil dihapus. Stok produk tidak dikembalikan.',
+      ID_PEMESANAN: transactionId,
+      deletedDetails: deletedDetails
+    };
+
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+// ==================================================
+// BATALKAN PESANAN
+//
+// LOGIKA:
+// 1. Validasi transaksi belum REFUND / SEBAGIAN REFUND
+// 2. Ambil seluruh Detail_Pesanan
+// 3. Kembalikan stok hanya untuk JENIS_STOK = TERBATAS
+// 4. Hapus seluruh Detail_Pesanan transaksi
+// 5. Hapus Pesanan
+// ==================================================
+function cancelTransaction(transactionId) {
+  if (!transactionId) {
+    throw new Error('ID_PEMESANAN wajib diisi.');
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const orderInfo = findOrderTransaction(transactionId);
+
+    // Header ditambahkan otomatis agar database lama tetap kompatibel.
+    ensureHeader(orderInfo.sheet, 'STATUS_PESANAN');
+    ensureHeader(orderInfo.sheet, 'TANGGAL_DIBATALKAN');
+
+    // Baca ulang karena penambahan header dapat mengubah struktur array.
+    const refreshedOrderInfo = findOrderTransaction(transactionId);
+    const statusTransactionIndex = findHeaderIndex(refreshedOrderInfo.headers, ['STATUS_TRANSAKSI']);
+    const statusRefundIndex = findHeaderIndex(refreshedOrderInfo.headers, ['STATUS_REFUND']);
+    const statusOrderIndex = findHeaderIndex(refreshedOrderInfo.headers, ['STATUS_PESANAN']);
+    const cancelledDateIndex = findHeaderIndex(refreshedOrderInfo.headers, ['TANGGAL_DIBATALKAN']);
+
+    if (isCancelledTransaction(refreshedOrderInfo.row, statusOrderIndex, statusTransactionIndex)) {
+      throw new Error('Pesanan ini sudah dibatalkan sebelumnya.');
+    }
+
+    if (isRefundedTransaction(refreshedOrderInfo.row, statusTransactionIndex, statusRefundIndex)) {
+      throw new Error('Pesanan tidak dapat dibatalkan karena transaksi ini sudah memiliki status REFUND atau SEBAGIAN REFUND.');
+    }
+
+    const detailSheet = getSheetByName(CONFIG.DETAIL_ORDER_SHEET_NAME);
+    const detailHeaders = getSheetHeaders(detailSheet);
+    const detailOrderIdIndex = findHeaderIndex(detailHeaders, ['ID_PEMESANAN']);
+    const detailProductIdIndex = findHeaderIndex(detailHeaders, ['ID_PRODUK', 'ID_RING']);
+    const detailQuantityIndex = findHeaderIndex(detailHeaders, ['JUMLAH', 'QTY']);
+    const detailStockTypeIndex = findHeaderIndex(detailHeaders, ['JENIS_STOK']);
+
+    if (detailOrderIdIndex === -1 || detailProductIdIndex === -1 || detailQuantityIndex === -1) {
+      throw new Error('Struktur header Detail_Pesanan belum sesuai.');
+    }
+
+    const detailLastRow = detailSheet.getLastRow();
+    if (detailLastRow < 2) {
+      throw new Error('Detail pesanan tidak ditemukan. Pesanan tidak dapat dibatalkan dengan aman.');
+    }
+
+    const detailValues = detailSheet.getRange(2, 1, detailLastRow - 1, detailHeaders.length).getValues();
+    const productData = getProductRowMap();
+    const groupedStockReturn = {};
+    let foundDetail = false;
+
+    detailValues.forEach(function(row) {
+      if (String(row[detailOrderIdIndex]).trim() !== String(transactionId).trim()) return;
+      foundDetail = true;
+
+      const productId = String(row[detailProductIdIndex] || '').trim();
+      const quantity = Number(row[detailQuantityIndex]) || 0;
+      const product = productData.products[productId];
+
+      const detailStockType = detailStockTypeIndex > -1
+        ? normalizeStockType(row[detailStockTypeIndex], '')
+        : '';
+
+      const stockType = detailStockType || normalizeStockType(
+        product ? product.stockType : '',
+        product ? product.row[productData.stockIndex] : ''
+      );
+
+      if (!productId) throw new Error('ID produk kosong pada Detail_Pesanan.');
+      if (quantity < 0) throw new Error('Jumlah produk tidak valid pada transaksi.');
+
+      // Hanya stok TERBATAS yang dikembalikan.
+      if (stockType === 'TERBATAS' && quantity > 0) {
+        if (!product) {
+          throw new Error('Produk "' + productId + '" tidak ditemukan. Stok tidak dapat dikembalikan dengan aman.');
+        }
+        groupedStockReturn[productId] = (groupedStockReturn[productId] || 0) + quantity;
+      }
+    });
+
+    if (!foundDetail) {
+      throw new Error('Detail untuk transaksi ini tidak ditemukan.');
+    }
+
+    // Kembalikan stok hanya sekali, sebelum status DIBATALKAN disimpan.
+    Object.keys(groupedStockReturn).forEach(function(productId) {
+      const product = productData.products[productId];
+      const jumlahKembali = Number(groupedStockReturn[productId]) || 0;
+      const newStock = (Number(product.stock) || 0) + jumlahKembali;
+      productData.sheet.getRange(product.rowNumber, productData.stockIndex + 1).setValue(newStock);
+    });
+
+    // Data Pesanan dan Detail_Pesanan TETAP disimpan sebagai history/audit.
+    if (statusOrderIndex > -1) {
+      refreshedOrderInfo.sheet.getRange(refreshedOrderInfo.rowNumber, statusOrderIndex + 1).setValue('DIBATALKAN');
+    }
+    if (statusTransactionIndex > -1) {
+      refreshedOrderInfo.sheet.getRange(refreshedOrderInfo.rowNumber, statusTransactionIndex + 1).setValue('DIBATALKAN');
+    }
+    if (cancelledDateIndex > -1) {
+      refreshedOrderInfo.sheet.getRange(refreshedOrderInfo.rowNumber, cancelledDateIndex + 1).setValue(new Date());
+    }
+
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      message: 'Pesanan berhasil dibatalkan. Data tetap tersimpan di History Transaksi dan stok produk TERBATAS telah dikembalikan.',
+      ID_PEMESANAN: transactionId,
+      STATUS_PESANAN: 'DIBATALKAN',
+      stokDikembalikan: groupedStockReturn
+    };
+
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+
+/* ==================================================
+ * PERFORMANCE PATCH 2026
+ * Optimasi untuk 1.000 - 10.000+ data:
+ * - Pagination server-side
+ * - Search server-side
+ * - Batch read/write
+ * - Update satu kali setValues()
+ * - Cache header/metadata per eksekusi
+ * ================================================== */
+
+function parsePositiveInt(value, fallback, max) {
+  var n = parseInt(value, 10);
+  if (!isFinite(n) || n < 1) n = fallback;
+  return Math.min(n, max || n);
+}
+
+function readData(params) {
+  params = params || {};
+  var sheet = getSheet();
+  var headers = getHeaders();
+  var lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) {
+    return { success:true, data:[], meta:{page:1, limit:parsePositiveInt(params.limit, 100, 10000), total:0, totalPages:0} };
+  }
+
+  var page = parsePositiveInt(params.page, 1, 1000000);
+  var limit = parsePositiveInt(params.limit, 10000, 10000);
+  var search = String(params.search || '').trim().toLowerCase();
+
+  // Tanpa search: hanya baca baris halaman yang diminta.
+  if (!search) {
+    var total = lastRow - 1;
+    var totalPages = Math.ceil(total / limit);
+    page = Math.min(page, Math.max(1, totalPages));
+    var start = 2 + (page - 1) * limit;
+    var count = Math.min(limit, lastRow - start + 1);
+    var values = count > 0 ? sheet.getRange(start, 1, count, headers.length).getValues() : [];
+
+    return {
+      success:true,
+      data: values.map(function(row) {
+        var obj = {};
+        for (var c=0;c<headers.length;c++) obj[headers[c]] = row[c];
+        return obj;
+      }),
+      meta:{page:page, limit:limit, total:total, totalPages:totalPages, hasMore:page < totalPages}
+    };
+  }
+
+  // Search global: satu batch read, filter di memory server, lalu pagination.
+  var all = sheet.getRange(2,1,lastRow-1,headers.length).getDisplayValues();
+  var matched = [];
+  for (var r=0;r<all.length;r++) {
+    var hit = false;
+    for (var c=0;c<all[r].length;c++) {
+      if (String(all[r][c]).toLowerCase().indexOf(search) !== -1) { hit=true; break; }
+    }
+    if (hit) matched.push(all[r]);
+  }
+
+  var totalMatch = matched.length;
+  var totalSearchPages = Math.ceil(totalMatch / limit);
+  page = Math.min(page, Math.max(1,totalSearchPages || 1));
+  var from = (page-1)*limit;
+  var rows = matched.slice(from, from+limit);
+
+  return {
+    success:true,
+    data:rows.map(function(row){
+      var obj={};
+      for(var c=0;c<headers.length;c++) obj[headers[c]]=row[c];
+      return obj;
+    }),
+    meta:{page:page, limit:limit, total:totalMatch, totalPages:totalSearchPages, hasMore:page<totalSearchPages, search:search}
+  };
+}
+
+function getData(id) {
+  if (!id) return {success:false,message:'ID tidak ditemukan.'};
+  var sheet=getSheet(), headers=getHeaders();
+  var idIndex=headers.indexOf(CONFIG.ID_FIELD);
+  if(idIndex===-1) throw new Error('Kolom '+CONFIG.ID_FIELD+' tidak ditemukan.');
+
+  var lastRow=sheet.getLastRow();
+  if(lastRow<2) return {success:false,message:'Data tidak ditemukan.'};
+
+  // Baca hanya kolom ID terlebih dahulu.
+  var ids=sheet.getRange(2,idIndex+1,lastRow-1,1).getDisplayValues();
+  var target=String(id);
+  for(var i=0;i<ids.length;i++){
+    if(String(ids[i][0])===target){
+      var row=sheet.getRange(i+2,1,1,headers.length).getValues()[0];
+      var obj={};
+      for(var c=0;c<headers.length;c++) obj[headers[c]]=row[c];
+      return {success:true,data:obj};
+    }
+  }
+  return {success:false,message:'Data tidak ditemukan.'};
+}
+
+function createData(data) {
+  var lock=LockService.getScriptLock();
+  lock.waitLock(30000);
+  try{
+    var sheet=getSheet(), headers=getHeaders();
+    var id=Utilities.getUuid();
+    data=data||{};
+
+    if(data[CONFIG.IMAGE_FIELD] && String(data[CONFIG.IMAGE_FIELD]).startsWith('data:image/')){
+      data[CONFIG.IMAGE_FIELD]=uploadImageToDrive(data[CONFIG.IMAGE_FIELD],id);
+    }
+    if(!data[CONFIG.IMAGE_FIELD]) data[CONFIG.IMAGE_FIELD]='';
+    delete data.DRIVE_FOLDER_ID; delete data.IMAGE_CHANGED;
+
+    var row=headers.map(function(h){ return h===CONFIG.ID_FIELD ? id : (Object.prototype.hasOwnProperty.call(data,h)?data[h]:''); });
+    // Lebih cepat daripada appendRow untuk operasi berulang.
+    sheet.getRange(sheet.getLastRow()+1,1,1,row.length).setValues([row]);
+
+    return {success:true,message:'Data produk berhasil disimpan.',id:id,imageUrl:data[CONFIG.IMAGE_FIELD]};
+  } finally { lock.releaseLock(); }
+}
+
+function updateData(id,data) {
+  if(!id) throw new Error('ID produk tidak ditemukan.');
+  var lock=LockService.getScriptLock();
+  lock.waitLock(30000);
+  try{
+    var sheet=getSheet(), headers=getHeaders();
+    var idIndex=headers.indexOf(CONFIG.ID_FIELD);
+    var imageIndex=headers.indexOf(CONFIG.IMAGE_FIELD);
+    if(idIndex===-1) throw new Error('Kolom '+CONFIG.ID_FIELD+' tidak ditemukan.');
+    if(imageIndex===-1) throw new Error('Kolom '+CONFIG.IMAGE_FIELD+' tidak ditemukan.');
+
+    var lastRow=sheet.getLastRow();
+    var ids=lastRow>=2 ? sheet.getRange(2,idIndex+1,lastRow-1,1).getDisplayValues() : [];
+    var rowNumber=0;
+    for(var i=0;i<ids.length;i++){ if(String(ids[i][0])===String(id)){rowNumber=i+2;break;} }
+    if(!rowNumber) return {success:false,message:'Data produk tidak ditemukan.'};
+
+    var row=sheet.getRange(rowNumber,1,1,headers.length).getValues()[0];
+    var oldImageUrl=row[imageIndex]||'';
+    data=data||{};
+    var imageWasSent=Object.prototype.hasOwnProperty.call(data,CONFIG.IMAGE_FIELD);
+
+    if(imageWasSent && data[CONFIG.IMAGE_FIELD] && String(data[CONFIG.IMAGE_FIELD]).startsWith('data:image/')){
+      var newUrl=uploadImageToDrive(data[CONFIG.IMAGE_FIELD],id);
+      if(oldImageUrl) deleteImageFromDrive(oldImageUrl);
+      data[CONFIG.IMAGE_FIELD]=newUrl;
+    } else if(imageWasSent && data[CONFIG.IMAGE_FIELD]===''){
+      if(oldImageUrl) deleteImageFromDrive(oldImageUrl);
+    }
+
+    delete data.DRIVE_FOLDER_ID; delete data.IMAGE_CHANGED;
+
+    // Ubah seluruh row di memory, lalu satu kali setValues().
+    for(var c=0;c<headers.length;c++){
+      var h=headers[c];
+      if(h!==CONFIG.ID_FIELD && Object.prototype.hasOwnProperty.call(data,h)) row[c]=data[h];
+    }
+    sheet.getRange(rowNumber,1,1,row.length).setValues([row]);
+
+    return {success:true,message:'Data produk berhasil diperbarui.',imageUrl:imageWasSent ? (data[CONFIG.IMAGE_FIELD]||'') : oldImageUrl};
+  } finally { lock.releaseLock(); }
+}
