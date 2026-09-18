@@ -30,6 +30,7 @@
 <title>Joanna Athaliya Piercing Studio — Manajemen Produk</title>
 
 <!-- Bootstrap 5 -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
 
@@ -37,11 +38,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<!-- QRCode.js for generating QR Code -->
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-<!-- html5-qrcode for barcode scanning -->
-<script defer src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<!-- QRCode.js dan html5-qrcode HANYA dimuat saat fitur scan barcode dibuka
+     (lihat loadBarcodeScannerLibrary()), bukan saat aplikasi pertama kali
+     dibuka. Ini menghemat bandwidth pada koneksi lambat karena kedua
+     library ini cukup besar dan jarang dipakai. -->
+<link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+<link rel="dns-prefetch" href="https://unpkg.com">
 
 <style>
   :root {
@@ -4793,9 +4796,16 @@ function clearAppApiCache(match = '') {
   }
 }
 
+// Katalog produk disimpan di localStorage (bukan sessionStorage) supaya
+// tetap tersedia walau aplikasi ditutup total lalu dibuka lagi. Ini yang
+// paling terasa pada koneksi lambat: Dashboard, Input Produk, dan
+// Penjualan langsung tampil dari cache, lalu diperbarui di latar
+// belakang begitu Apps Script selesai merespons.
+const PRODUCTS_LOCAL_CACHE_KEY = 'joanna_products_cache_v2';
+
 function saveProductsSessionCache(data) {
   try {
-    sessionStorage.setItem('joanna_products_cache', JSON.stringify({
+    localStorage.setItem(PRODUCTS_LOCAL_CACHE_KEY, JSON.stringify({
       time: Date.now(),
       data
     }));
@@ -4804,7 +4814,7 @@ function saveProductsSessionCache(data) {
 
 function getProductsSessionCache(maxAge = 60000) {
   try {
-    const raw = sessionStorage.getItem('joanna_products_cache');
+    const raw = localStorage.getItem(PRODUCTS_LOCAL_CACHE_KEY);
     if (!raw) return null;
     const cached = JSON.parse(raw);
     if (!cached || !Array.isArray(cached.data) || Date.now() - cached.time > maxAge) return null;
@@ -4818,6 +4828,7 @@ function invalidateProductCache() {
   clearAppApiCache('action=read');
   clearAppApiCache('action=readProducts');
   clearAppApiCache('action=history');
+  try { localStorage.removeItem(PRODUCTS_LOCAL_CACHE_KEY); } catch (_) {}
   try { sessionStorage.removeItem('joanna_products_cache'); } catch (_) {}
   // History di localStorage ikut dibuang agar tidak menampilkan
   // status transaksi yang sudah berubah (refund/batal).
@@ -6127,9 +6138,49 @@ function removeProductImage() {
 
 document.getElementById('pImageFile').addEventListener('change', handleImageUpload);
 
+// =====================================================
+// PEMUATAN LIBRARY BESAR SECARA MALAS (LAZY LOAD)
+// QRCode.js dan html5-qrcode cukup besar dan tidak selalu dipakai di
+// setiap sesi. Pada koneksi lambat, menundanya sampai benar-benar
+// dibutuhkan mempercepat pemuatan awal aplikasi secara signifikan.
+// =====================================================
+const __LAZY_SCRIPT_CACHE = new Map();
+
+function loadScriptOnce(url){
+  if(__LAZY_SCRIPT_CACHE.has(url)) return __LAZY_SCRIPT_CACHE.get(url);
+
+  const promise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = url;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Gagal memuat ${url}`));
+    document.head.appendChild(script);
+  });
+
+  __LAZY_SCRIPT_CACHE.set(url, promise);
+  return promise;
+}
+
+function loadQrCodeLibrary(){
+  return typeof QRCode !== 'undefined'
+    ? Promise.resolve()
+    : loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js');
+}
+
+function loadBarcodeScannerLibrary(){
+  return typeof Html5Qrcode !== 'undefined'
+    ? Promise.resolve()
+    : loadScriptOnce('https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js');
+}
+
 function initQRCode() {
-  if (qrcodeInstance) return; if (typeof QRCode === 'undefined') return;
-  qrcodeInstance = new QRCode(document.getElementById("qrcode"), { text: "Masukkan data produk", width: 200, height: 200, colorDark: "#0f172a", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H });
+  if (qrcodeInstance) return;
+
+  loadQrCodeLibrary().then(() => {
+    if (qrcodeInstance || typeof QRCode === 'undefined') return;
+    qrcodeInstance = new QRCode(document.getElementById("qrcode"), { text: "Masukkan data produk", width: 200, height: 200, colorDark: "#0f172a", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H });
+    updateQRCode();
+  }).catch((error) => console.warn('QR Code tidak dapat dimuat:', error));
 }
 function updateQRCode() {
   const name = document.getElementById('pName').value || 'Nama Produk';
@@ -6518,7 +6569,11 @@ async function fetchProductsFromGAS(forceRefresh = false) {
   // Gunakan cache sesi sebagai respons instan saat membuka menu.
   // Sinkronisasi server tetap berjalan di background.
   if (!forceRefresh) {
-    const sessionProducts = getProductsSessionCache(10 * 60 * 1000);
+    // Jendela instant-render diperpanjang menjadi 24 jam karena baris di
+    // bawah SELALU menjalankan sinkronisasi ke Apps Script segera setelah
+    // ini. Pada koneksi lambat, katalog kemarin tampil instan sambil
+    // menunggu data terbaru, jauh lebih baik daripada layar kosong.
+    const sessionProducts = getProductsSessionCache(24 * 60 * 60 * 1000);
     if (sessionProducts && sessionProducts.length) {
       products = sessionProducts;
       gasProducts = sessionProducts;
@@ -8157,7 +8212,23 @@ function buildHistoryUrl(period, range, page){
   return `${GAS_URL}?${params.toString()}`;
 }
 
+// =====================================================
+// DETEKSI KONEKSI LAMBAT / MODE HEMAT DATA
+// Pada koneksi 2G atau saat pengguna mengaktifkan "Data Saver", aktivitas
+// latar belakang (pemanasan cache, prefetch halaman berikutnya) dihentikan
+// agar kuota terbatas tidak habis untuk hal yang belum tentu dibuka.
+// Permintaan yang memang diminta pengguna tetap berjalan seperti biasa.
+// =====================================================
+function isSlowConnection(){
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if(!conn) return false;
+  if(conn.saveData) return true;
+  return ['slow-2g','2g'].includes(conn.effectiveType);
+}
+
 function prefetchHistoryPages(period, range, totalPages){
+  if(isSlowConnection()) return;
+
   const targets=[historyPage+1, historyPage-1]
     .filter(p => p>=1 && p<=Math.max(1, Number(totalPages)||1) && p!==historyPage);
   if(!targets.length || !GAS_URL) return;
@@ -9559,6 +9630,16 @@ function setScannerMethod(method) {
 function startCameraScanner() {
   if (scannerMethod !== 'camera' || html5QrCode) return;
 
+  loadBarcodeScannerLibrary().then(() => {
+    if (scannerMethod !== 'camera' || html5QrCode) return;
+    beginCameraScannerSession();
+  }).catch((error) => {
+    console.error('Gagal memuat library scanner:', error);
+    showToast('Scanner Tidak Tersedia', 'Koneksi terlalu lambat untuk memuat modul kamera. Coba lagi atau gunakan input manual.', 'danger');
+  });
+}
+
+function beginCameraScannerSession() {
   try {
     html5QrCode = new Html5Qrcode("scannerRegion");
     html5QrCode.start(
@@ -9840,7 +9921,7 @@ setTimeout(() => { if (document.getElementById('page-history-transaksi')?.classL
 // secepat popup Riwayat Transaksi di Pengaturan.
 // =====================================================
 function warmUpHistoryTransaksi(){
-  if(!GAS_URL) return;
+  if(!GAS_URL || isSlowConnection()) return;
   warmUpBackend();
   loadTransactionHistory(false).catch(() => {});
 }
