@@ -38,10 +38,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <!-- QRCode.js for generating QR Code -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <!-- html5-qrcode for barcode scanning -->
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script defer src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <style>
   :root {
@@ -1184,6 +1184,85 @@
 
   .sales-filter-toolbar .btn{
     grid-column:auto !important;
+  }
+}
+
+
+/* ==================================================
+   PENJUALAN - PAGINATION PRODUK
+   ================================================== */
+.sales-product-pagination{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap;
+  margin-top:20px;
+  padding-top:16px;
+  border-top:1px solid var(--border);
+}
+.sales-product-pagination-info{
+  font-size:12.5px;
+  color:var(--ink-mute);
+}
+.sales-product-pagination-buttons{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.sales-product-page-btn{
+  min-width:38px;
+  height:38px;
+  padding:6px 11px;
+  border:1px solid var(--border-strong);
+  background:#fff;
+  color:var(--slate-700);
+  border-radius:9px;
+  font-size:12px;
+  font-weight:600;
+  transition:all .2s ease;
+}
+.sales-product-page-btn:hover:not(:disabled){
+  border-color:var(--accent-500);
+  color:var(--accent-600);
+  background:rgba(59,130,246,.05);
+}
+.sales-product-page-btn.active{
+  background:var(--accent-500);
+  border-color:var(--accent-500);
+  color:#fff;
+  box-shadow:0 5px 12px rgba(59,130,246,.2);
+}
+.sales-product-page-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.sales-product-page-ellipsis{
+  min-width:28px;
+  text-align:center;
+  color:var(--ink-mute);
+  font-size:13px;
+}
+@media(max-width:576px){
+  .sales-product-pagination{
+    align-items:stretch;
+    gap:10px;
+  }
+  .sales-product-pagination-info{
+    width:100%;
+    text-align:center;
+  }
+  .sales-product-pagination-buttons{
+    width:100%;
+    justify-content:center;
+  }
+  .sales-product-page-btn{
+    min-width:36px;
+    height:36px;
+    padding:5px 9px;
+    font-size:11px;
   }
 }
 
@@ -3749,11 +3828,11 @@ html, body{
                       <input type="text" id="orderSearch" placeholder="Cari produk...">
                     </div>
 
-                    <select class="form-select form-select-sm" id="orderCategoryFilter" onchange="renderOrderProducts()">
+                    <select class="form-select form-select-sm" id="orderCategoryFilter" onchange="resetSalesProductPagination(); renderOrderProducts()">
                       <option value="">Semua Kategori</option>
                     </select>
 
-                    <select class="form-select form-select-sm" id="orderSalesTypeFilter" onchange="renderOrderProducts()">
+                    <select class="form-select form-select-sm" id="orderSalesTypeFilter" onchange="resetSalesProductPagination(); renderOrderProducts()">
                       <option value="">Semua Jenis Penjualan</option>
                     </select>
 
@@ -3765,6 +3844,11 @@ html, body{
               </div>
               <div id="orderProductList" class="sales-product-grid">
                 <div class="text-center py-4 text-muted">Memuat data dari Spreadsheet...</div>
+              </div>
+
+              <div id="salesProductPagination" class="sales-product-pagination" style="display:none;">
+                <div id="salesProductPaginationInfo" class="sales-product-pagination-info"></div>
+                <div id="salesProductPaginationButtons" class="sales-product-pagination-buttons"></div>
               </div>
             </div>
           </div>
@@ -3858,7 +3942,7 @@ html, body{
           <div class="panel-header flex-wrap gap-3">
             <div><div class="panel-eyebrow">Filter History</div><h3 class="panel-title">Riwayat Pembayaran</h3></div>
             <div class="d-flex gap-2 flex-wrap">
-              <button class="btn btn-outline-secondary btn-sm history-filter active" data-history-filter="daily" onclick="setHistoryFilter('daily', this)"><i class="bi bi-calendar-day me-1"></i>Harian</button>
+              <button class="btn btn-accent btn-sm history-filter active" data-history-filter="daily" onclick="setHistoryFilter('daily', this)"><i class="bi bi-calendar-day me-1"></i>Harian</button>
               <button class="btn btn-outline-secondary btn-sm history-filter" data-history-filter="weekly" onclick="setHistoryFilter('weekly', this)"><i class="bi bi-calendar-week me-1"></i>Mingguan</button>
               <button class="btn btn-outline-secondary btn-sm history-filter" data-history-filter="monthly" onclick="setHistoryFilter('monthly', this)"><i class="bi bi-calendar-month me-1"></i>Bulanan</button>
               <button class="btn btn-outline-secondary btn-sm history-filter" data-history-filter="yearly" onclick="setHistoryFilter('yearly', this)"><i class="bi bi-calendar-range me-1"></i>Tahunan</button>
@@ -3870,11 +3954,11 @@ html, body{
             <div class="row g-3 align-items-end">
               <div class="col-md-4">
                 <label for="historyDateFrom" class="form-label small fw-semibold mb-1">Dari</label>
-                <input type="date" id="historyDateFrom" class="form-control" onchange="historyPage=1;renderTransactionHistory()">
+                <input type="date" id="historyDateFrom" class="form-control" onchange="historyPage=1">
               </div>
               <div class="col-md-4">
                 <label for="historyDateTo" class="form-label small fw-semibold mb-1">Sampai</label>
-                <input type="date" id="historyDateTo" class="form-control" onchange="historyPage=1;renderTransactionHistory()">
+                <input type="date" id="historyDateTo" class="form-control" onchange="historyPage=1">
               </div>
               <div class="col-md-4 d-flex gap-2">
                 <button type="button" class="btn btn-accent flex-grow-1" onclick="applyHistoryDateRange()">
@@ -4541,7 +4625,7 @@ html, body{
 // KONFIGURASI APLIKASI
 // =====================================================
 // GANTI URL INI DENGAN URL WEB APP ANDA (Pastikan diakhiri dengan /exec)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbw-cIceGiYDeCrg4YdJxhHtxfEdAQmUWoisZm2Fs_Nwp1NIw6fBg8uQ5ktDu2WyP_sD/exec'; 
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzFXCx3bnOWIQJ9eOVv0jBW_MKkzp-apBYjequnAf6lEoLblVKDzAWe7WrVk5Uap46daA/exec'; 
 
 // MASUKKAN ID FOLDER GOOGLE DRIVE UNTUK MENYIMPAN GAMBAR PRODUK
 // Cara dapat ID: Buka folder di Google Drive, lihat URL. ID adalah bagian setelah `/folders/`
@@ -4550,9 +4634,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbw-cIceGiYDeCrg4YdJxhHt
 const DRIVE_FOLDER_ID = ''; // tidak dikirim ke Apps Script
 // =====================================================
 
-let products = [
-  { id: 'local_1', name: 'Stud Earrings Silver', category: 'Stud Earrings', price: 85000, stock: 45, sku: 'JAP-001', barcode: 'JAP-001', image: 'https://picsum.photos/seed/piercing/400/300.jpg' }
-];
+let products = [];
 let orders = []; 
 let cart = [];
 let html5QrCode = null;
@@ -4573,6 +4655,13 @@ let uploadedImageBase64 = '';
 // Apps Script akan menghapus file Drive lama saat foto diganti atau produk dihapus.
 let imageChanged = false;
 let originalImageValue = '';
+
+// ==================================================
+// PAGINATION PRODUK MENU PENJUALAN
+// ==================================================
+const SALES_PRODUCT_PAGE_SIZE = 10;
+let salesProductCurrentPage = 1;
+let salesProductFilterSignature = '';
 
 // Variabel Kategori Dinamis
 let categories = ['Umum'];
@@ -4610,12 +4699,23 @@ function closeModalSafely(modalId) {
 // =====================================================
 const APP_API_CACHE = new Map();
 const APP_API_PENDING = new Map();
-const APP_API_DEFAULT_TTL = 30000;
-const APP_API_TIMEOUT = 25000;
-const APP_PRODUCT_PAGE_SIZE = 10000; // kompatibel dengan UI lama; server sudah mendukung page/limit.
+const APP_API_DEFAULT_TTL = 45000;
+const APP_API_TIMEOUT = 12000;
+const APP_API_RETRY_DELAYS = [350, 900];
+const APP_PRODUCT_PAGE_SIZE = 10000;
 
 function appApiCacheKey(url) {
-  return String(url).replace(/[?&]ts=\d+/g, '').replace(/[?&]$/, '');
+  return String(url)
+    .replace(/[?&]ts=\d+/g, '')
+    .replace(/[?&]$/, '');
+}
+
+function isRetryableApiError(error) {
+  return !!error && (
+    error.name === 'AbortError' ||
+    error.name === 'TypeError' ||
+    /Failed to fetch|NetworkError|network/i.test(String(error.message || ''))
+  );
 }
 
 async function appFetchJSON(url, options = {}, ttl = APP_API_DEFAULT_TTL) {
@@ -4627,20 +4727,50 @@ async function appFetchJSON(url, options = {}, ttl = APP_API_DEFAULT_TTL) {
   if (APP_API_PENDING.has(key)) return APP_API_PENDING.get(key);
 
   const request = (async () => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), APP_API_TIMEOUT);
+    let lastError = null;
+
     try {
-      const response = await fetch(url, {
-        cache: 'default',
-        signal: controller.signal,
-        ...options
-      });
-      if (!response.ok) throw new Error(`Server merespons ${response.status}`);
-      const data = await response.json();
-      APP_API_CACHE.set(key, { time: Date.now(), data });
-      return data;
+      for (let attempt = 0; attempt <= APP_API_RETRY_DELAYS.length; attempt++) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), APP_API_TIMEOUT);
+
+        try {
+          const requestOptions = {
+            cache: 'default',
+            ...options,
+            signal: controller.signal
+          };
+
+          const response = await fetch(url, requestOptions);
+
+          // Retry hanya untuk gangguan server sementara.
+          if (!response.ok) {
+            if ((response.status >= 500 || response.status === 429) && attempt < APP_API_RETRY_DELAYS.length) {
+              throw Object.assign(new Error(`Server merespons ${response.status}`), { retryable: true });
+            }
+            throw new Error(`Server merespons ${response.status}`);
+          }
+
+          const data = await response.json();
+          APP_API_CACHE.set(key, { time: Date.now(), data });
+          return data;
+
+        } catch (error) {
+          lastError = error;
+          const retryable = error?.retryable === true || isRetryableApiError(error);
+
+          if (!retryable || attempt >= APP_API_RETRY_DELAYS.length) {
+            throw error;
+          }
+
+          await new Promise(resolve => setTimeout(resolve, APP_API_RETRY_DELAYS[attempt]));
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      throw lastError || new Error('Permintaan API gagal.');
     } finally {
-      clearTimeout(timeout);
       APP_API_PENDING.delete(key);
     }
   })();
@@ -4686,7 +4816,12 @@ function getProductsSessionCache(maxAge = 60000) {
 
 function invalidateProductCache() {
   clearAppApiCache('action=read');
+  clearAppApiCache('action=readProducts');
+  clearAppApiCache('action=history');
   try { sessionStorage.removeItem('joanna_products_cache'); } catch (_) {}
+  // History di localStorage ikut dibuang agar tidak menampilkan
+  // status transaksi yang sudah berubah (refund/batal).
+  try { localStorage.removeItem('joanna_history_page_cache_v3'); } catch (_) {}
 }
 
 // =====================================================
@@ -4695,40 +4830,37 @@ function invalidateProductCache() {
 // Backend Code.gs menyediakan action=verifyPassword dan changePassword.
 // Sheet database yang digunakan: Login (ID_LOGIN | PASSWORD).
 // =====================================================
+// Apps Script membutuhkan waktu untuk menyiapkan instance saat lama tidak
+// dipakai (cold start). Satu permintaan ringan menghilangkan jeda itu dari
+// proses yang dilihat pengguna, dan tidak pernah dijalankan dua kali.
+let backendWarmUpPromise = null;
+
+function warmUpBackend(){
+  if(!GAS_URL || backendWarmUpPromise) return backendWarmUpPromise;
+
+  backendWarmUpPromise = fetch(`${GAS_URL}?action=ping`, {cache:'no-store'})
+    .catch(() => {});
+
+  return backendWarmUpPromise;
+}
+
 async function verifyPasswordWithDatabase(password){
   if(!GAS_URL) throw new Error('URL Apps Script belum diisi.');
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
-  try {
-    const url = `${GAS_URL}?action=verifyPassword&password=${encodeURIComponent(password)}`;
-    const data = await appFetchJSON(url, {}, 0);
-    return data && data.valid === true;
-
-  } finally {
-    clearTimeout(timeout);
-  }
+  const url = `${GAS_URL}?action=verifyPassword&password=${encodeURIComponent(password)}`;
+  const data = await appFetchJSON(url, {cache:'no-store'}, 0);
+  return data && data.valid === true;
 }
 
 async function changePasswordInDatabase(currentPassword, newPassword){
   if(!GAS_URL) throw new Error('URL Apps Script belum diisi.');
 
-  // Apps Script menerima JSON dari doPost().
-  // mode:no-cors digunakan agar Web App tetap dapat dipanggil lintas domain.
-  await fetch(GAS_URL, {
-    method:'POST',
-    mode:'no-cors',
-    cache:'no-store',
-    redirect:'follow',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify({
-      action:'changePassword',
-      data:{
-        currentPassword: currentPassword,
-        newPassword: newPassword
-      }
-    })
+  await postGAS({
+    action:'changePassword',
+    data:{
+      currentPassword: currentPassword,
+      newPassword: newPassword
+    }
   });
 }
 
@@ -4797,8 +4929,6 @@ function cacheReceiptSettings(){
 async function loadReceiptSettings(forceRemote=false){
   const hasCache = hydrateReceiptSettingsFromCache();
 
-  // Pengaturan yang baru disimpan secara lokal diprioritaskan.
-  // Ini mencegah data lama dari server menimpa perubahan terbaru.
   const lastSavedAt = Number(localStorage.getItem('receiptSettingsLastSavedAt') || 0);
   const savedRecently = lastSavedAt && (Date.now() - lastSavedAt < 24 * 60 * 60 * 1000);
 
@@ -4807,17 +4937,12 @@ async function loadReceiptSettings(forceRemote=false){
   }
 
   try{
-    const controller = new AbortController();
-    const timeout = setTimeout(()=>controller.abort(), 4000);
-
-    const res = await fetch(
-      `${GAS_URL}?action=getReceiptSettings&ts=${Date.now()}`,
-      {cache:'no-store', signal:controller.signal}
+    const data = await appFetchJSON(
+      `${GAS_URL}?action=getReceiptSettings`,
+      {cache:'default'},
+      forceRemote ? 0 : 60000
     );
 
-    clearTimeout(timeout);
-
-    const data = await res.json();
     if(data && data.success && data.settings){
       receiptSettings = {...DEFAULT_RECEIPT_SETTINGS,...data.settings};
       cacheReceiptSettings();
@@ -4906,7 +5031,7 @@ async function saveReceiptSettings(){
     closeModalSafely('receiptSettingsModal');
 
     // Refresh aplikasi setelah pengaturan berhasil disimpan.
-    autoRefreshApplication(1200, 'pengaturan');
+    navigate('pengaturan');
 
     // =====================================================
     // 3. SINKRONKAN KE GOOGLE APPS SCRIPT DI LATAR BELAKANG
@@ -5011,6 +5136,79 @@ function generateClientTransactionId(){
   const p=n=>String(n).padStart(2,'0');
   const random=Math.random().toString(16).slice(2,10).toUpperCase();
   return `TRX-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${random}`;
+}
+
+/* =====================================================
+   IDEMPOTENCY PEMBAYARAN
+   Mencegah 1 pesanan tercatat 2x ketika request pertama
+   sebenarnya sudah diterima Apps Script tetapi browser
+   mengalami timeout/gagal menerima hasilnya.
+   ===================================================== */
+const PENDING_CHECKOUT_KEY = 'joanna_pending_checkout_v1';
+
+function buildCheckoutFingerprint(items, discountPercent, priceCut){
+  const normalized = (Array.isArray(items) ? items : [])
+    .map(item => ({
+      id: String(item.ID_PRODUK || item.ID_RING || item.id || ''),
+      qty: Number(item.JUMLAH || item.qty || 0),
+      price: Number(item.HARGA_SATUAN || item.price || 0)
+    }))
+    .sort((a,b) => a.id.localeCompare(b.id));
+
+  return JSON.stringify({
+    items: normalized,
+    discountPercent: Number(discountPercent || 0),
+    priceCut: Number(priceCut || 0)
+  });
+}
+
+function getPendingCheckout(){
+  try{
+    const raw = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){
+    return null;
+  }
+}
+
+function getOrCreateCheckoutTransactionId(fingerprint){
+  const pending = getPendingCheckout();
+
+  // Jika transaksi sebelumnya gagal/timeout, gunakan ID yang sama.
+  // Apps Script akan mengenali ID tersebut dan tidak membuat baris baru.
+  if(
+    pending &&
+    pending.fingerprint === fingerprint &&
+    pending.transactionId
+  ){
+    return String(pending.transactionId);
+  }
+
+  const transactionId = generateClientTransactionId();
+
+  try{
+    sessionStorage.setItem(
+      PENDING_CHECKOUT_KEY,
+      JSON.stringify({
+        transactionId,
+        fingerprint,
+        createdAt: Date.now()
+      })
+    );
+  }catch(e){
+    console.warn('Session storage checkout tidak tersedia:', e);
+  }
+
+  return transactionId;
+}
+
+function clearPendingCheckout(transactionId){
+  try{
+    const pending = getPendingCheckout();
+    if(!pending || String(pending.transactionId) === String(transactionId)){
+      sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+    }
+  }catch(e){}
 }
 
 // =====================================================
@@ -5583,7 +5781,7 @@ async function submitChangePassword(event){
     // Respons UI langsung agar aplikasi terasa cepat.
     form.reset();
     showToast('Berhasil','Password baru berhasil dikirim dan disimpan ke database Login. Aplikasi akan diperbarui otomatis.','success');
-    autoRefreshApplication(1200, 'pengaturan');
+    navigate('pengaturan');
 
   } catch(err) {
     console.error(err);
@@ -5621,6 +5819,9 @@ function navigate(page, salesTypeFilter = '') {
       ? 'Menu Pengaturan bersifat terbatas. Masukkan password yang tersimpan di database Login untuk melanjutkan.'
       : 'Menu Input Produk memerlukan otoritas Administrator. Masukkan password yang tersimpan di database Login untuk melanjutkan.';
     new bootstrap.Modal(document.getElementById('passwordModal')).show();
+    // Panaskan Apps Script selagi pengguna mengetik password, sehingga
+    // proses "Memeriksa..." tidak lagi menunggu cold start.
+    warmUpBackend();
     setTimeout(() => document.getElementById('inputPassword').focus(), 80);
     return;
   }
@@ -5665,11 +5866,9 @@ function navigate(page, salesTypeFilter = '') {
     });
   }
   if (page === 'history-transaksi') {
-    // History harus menunggu katalog produk agar ID_PRODUK pada Detail_Pesanan
-    // dapat diterjemahkan menjadi NAMA_PRODUK.
-    Promise.resolve(fetchProductsFromGAS())
-      .catch(error => console.warn('Gagal preload katalog produk:', error))
-      .finally(() => loadTransactionHistory());
+    // History tidak lagi menunggu katalog produk. Halaman hanya mengambil
+    // 15 transaksi yang sedang ditampilkan dari server.
+    loadTransactionHistory();
   }
 }
 
@@ -5755,6 +5954,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => item.addEventL
   // Jalankan navigasi langsung agar Dashboard tetap dapat dibuka walaupun
   // hash URL sudah sama dengan target halaman.
   navigate(targetPage);
+  if (targetPage === 'history-transaksi') setTimeout(() => loadTransactionHistory(false), 0);
 }));
 document.getElementById('menuToggle').addEventListener('click', () => { document.getElementById('sidebar').classList.toggle('show'); document.getElementById('sidebarBackdrop').classList.toggle('show'); });
 document.getElementById('sidebarBackdrop').addEventListener('click', () => { document.getElementById('sidebar').classList.remove('show'); document.getElementById('sidebarBackdrop').classList.remove('show'); });
@@ -6009,41 +6209,33 @@ async function sendCRUDToGAS(payload) {
     throw new Error('URL Web App Apps Script belum diisi.');
   }
 
-  /*
-   * PENTING:
-   * Jangan menggunakan keepalive:true untuk upload foto Base64.
-   * Browser membatasi request keepalive (umumnya sekitar 64 KB), sehingga
-   * payload gambar dapat menyebabkan TypeError: Failed to fetch.
-   *
-   * Apps Script tetap menerima JSON melalui e.postData.contents.
-   */
+  const action = String(payload?.action || '');
+  const timeoutMs = action === 'createTransaction' ? 12000 : 30000;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(GAS_URL, {
+    await fetch(GAS_URL, {
       method: 'POST',
       mode: 'no-cors',
       cache: 'no-store',
       redirect: 'follow',
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
 
-    // Pada mode no-cors response memang opaque. Jika fetch selesai tanpa
-    // exception, request sudah berhasil dikirim ke endpoint Apps Script.
     invalidateProductCache();
-    return { success: true, responseType: res.type };
+    return { success:true };
 
   } catch (error) {
-    if (error && error.name === 'AbortError') {
-      throw new Error('Koneksi ke Apps Script terlalu lama. Coba lagi dan pastikan Web App aktif.');
+    if(error?.name === 'AbortError'){
+      throw new Error('Koneksi ke server terlalu lama. Silakan coba kembali.');
     }
+
     throw new Error(
-      'Tidak dapat menghubungi Google Apps Script. Pastikan URL Web App benar, deployment masih aktif, dan akses Web App diatur ke siapa saja yang memiliki akses. Detail: ' +
+      'Tidak dapat menghubungi Google Apps Script. ' +
+      'Periksa URL Web App, deployment, dan akses Web App. Detail: ' +
       (error?.message || 'Failed to fetch')
     );
   } finally {
@@ -6130,8 +6322,6 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
         'slate'
       );
 
-      // Beri waktu Apps Script menyelesaikan upload Drive sebelum data dibaca ulang.
-      await new Promise(resolve => setTimeout(resolve, 1200));
     }
 
     if (isEditing) {
@@ -6174,14 +6364,16 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
     resetQRForm();
     renderCategoryOptions();
     
-    await fetchProductsFromGAS();
-
-    // INPUT PRODUK: SIMPAN dan UPDATE cukup memperbarui data/menu produk,
-    // tanpa reload seluruh aplikasi agar posisi halaman dan koneksi perangkat tetap aman.
+    // UI langsung diperbarui. Sinkronisasi katalog dijalankan di background.
+    // Tidak ada lagi delay buatan atau menunggu pembacaan Spreadsheet kedua.
     showToast('Berhasil', isEditing ? 'Produk berhasil diperbarui.' : 'Produk berhasil disimpan.', 'success');
     if (typeof filterGASProductsTable === 'function') filterGASProductsTable();
     if (typeof renderOrderProducts === 'function') renderOrderProducts();
-    if (typeof loadDashboard === 'function') Promise.resolve(loadDashboard()).catch(()=>{});
+
+    fetchProductsFromGAS(true).then(() => {
+      if (typeof filterGASProductsTable === 'function') filterGASProductsTable();
+      if (typeof renderOrderProducts === 'function') renderOrderProducts();
+    }).catch(err => console.warn('Sync produk background gagal:', err));
     
   } catch (error) {
     console.error('CRUD Produk Error:', error);
@@ -6282,20 +6474,75 @@ function viewQR(base64Data, sku) {
   new bootstrap.Modal(document.getElementById('qrModal')).show();
 }
 
+async function viewQRByProduct(productId, sku){
+  if(!productId || !GAS_URL) return showToast('QR Code','ID produk tidak tersedia.','red');
+
+  try{
+    const json = await appFetchJSON(
+      `${GAS_URL}?action=get&id=${encodeURIComponent(productId)}`,
+      {cache:'default'},
+      60000
+    );
+    const qr = json?.data?.QR_CODE || '';
+    if(!qr) return showToast('QR Code','QR Code produk tidak tersedia.','red');
+
+    // Simpan hanya pada objek produk aktif, bukan seluruh katalog server.
+    const found = (gasProducts || []).find(p => String(p.ID_RING || p.id) === String(productId));
+    if(found) found.QR_CODE = qr;
+    viewQR(qr, sku);
+  }catch(error){
+    console.error('Gagal mengambil QR:',error);
+    showToast('QR Code','QR Code belum dapat dimuat. Silakan coba lagi.','red');
+  }
+}
+
 // ==================================================
 // OPTIMASI KONEKSI DATABASE: cegah request ganda
 // ==================================================
 let productsFetchPromise = null;
 let lastProductsFetchAt = 0;
-const PRODUCTS_CACHE_TTL = 15000;
+const PRODUCTS_CACHE_TTL = 45000;
 
 async function fetchProductsFromGAS(forceRefresh = false) {
-  if (productsFetchPromise && !forceRefresh) return productsFetchPromise;
-  if (!forceRefresh && products.length && (Date.now() - lastProductsFetchAt < PRODUCTS_CACHE_TTL)) return products;
+  // Request yang sedang berjalan dipakai bersama agar beberapa menu tidak
+  // menembak Apps Script secara bersamaan.
+  if (productsFetchPromise) {
+    if (!forceRefresh && products.length) return products;
+    return productsFetchPromise;
+  }
+
+  if (!forceRefresh && products.length && (Date.now() - lastProductsFetchAt < PRODUCTS_CACHE_TTL)) {
+    return products;
+  }
+
+  // Gunakan cache sesi sebagai respons instan saat membuka menu.
+  // Sinkronisasi server tetap berjalan di background.
+  if (!forceRefresh) {
+    const sessionProducts = getProductsSessionCache(10 * 60 * 1000);
+    if (sessionProducts && sessionProducts.length) {
+      products = sessionProducts;
+      gasProducts = sessionProducts;
+      updateProductTableCategoryFilter(gasProducts);
+      updateProductTableSalesTypeFilter(gasProducts);
+      const tableBody = document.getElementById('gasProductsTableBody');
+      if (tableBody) filterGASProductsTable();
+
+      productsFetchPromise = fetchProductsFromGASDirect()
+        .then(result => { lastProductsFetchAt = Date.now(); return result; })
+        .catch(err => {
+          console.warn('Sinkronisasi katalog background gagal:', err);
+          return products;
+        })
+        .finally(() => { productsFetchPromise = null; });
+
+      return products;
+    }
+  }
 
   productsFetchPromise = fetchProductsFromGASDirect()
     .then(result => { lastProductsFetchAt = Date.now(); return result; })
     .finally(() => { productsFetchPromise = null; });
+
   return productsFetchPromise;
 }
 
@@ -6331,7 +6578,7 @@ async function fetchProductsFromGASDirect() {
 
   try {
     const separator = GAS_URL.includes('?') ? '&' : '?';
-    const endpoint = `${GAS_URL}${separator}action=read&page=1&limit=${APP_PRODUCT_PAGE_SIZE}`;
+    const endpoint = `${GAS_URL}${separator}action=readProducts&light=1`;
     const json = await appFetchJSON(endpoint, {}, 15000);
     if (json.success) {
       gasProducts = sortNewestProductsFirst(json.data);
@@ -6650,7 +6897,11 @@ function renderGASTable(data, options = {}) {
     const pQR = p.QR_CODE || p.qrCodeData || '';
     const pImg = p.URL_GAMBAR || p.image || '';
 
-    const qrImg = pQR ? `<img src="${pQR}" alt="QR" onclick="viewQR('${pQR}', '${pSku}')" style="cursor: zoom-in; width: 45px; height: 45px; object-fit: contain; border: 1px solid var(--border); border-radius: 6px; padding: 2px; background: #fff;">` : '<div class="img-placeholder"><i class="bi bi-qr-code"></i></div>';
+    // QR tidak lagi dikirim untuk seluruh katalog. Ambil QR hanya saat
+    // pengguna benar-benar membutuhkannya agar payload awal jauh lebih kecil.
+    const qrImg = pQR
+      ? `<img src="${pQR}" alt="QR" loading="lazy" onclick="viewQR('${pQR}', '${pSku}')" style="cursor: zoom-in; width: 45px; height: 45px; object-fit: contain; border: 1px solid var(--border); border-radius: 6px; padding: 2px; background: #fff;">`
+      : `<button type="button" class="btn btn-sm btn-ghost py-1 px-2" onclick="viewQRByProduct('${id}', '${pSku}')"><i class="bi bi-qr-code"></i> Lihat</button>`;
     const price = typeof pPrice === 'number' ? formatRupiah(pPrice) : formatRupiah(+pPrice);
 
     return `<tr>
@@ -6816,6 +7067,103 @@ function getNumericStock(product) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function updateSalesProductPagination(totalItems, totalPages) {
+  const wrap = document.getElementById('salesProductPagination');
+  const info = document.getElementById('salesProductPaginationInfo');
+  const buttons = document.getElementById('salesProductPaginationButtons');
+
+  if (!wrap || !info || !buttons) return;
+
+  if (totalItems <= SALES_PRODUCT_PAGE_SIZE) {
+    wrap.style.display = 'none';
+    buttons.innerHTML = '';
+    return;
+  }
+
+  wrap.style.display = '';
+
+  const startItem = (salesProductCurrentPage - 1) * SALES_PRODUCT_PAGE_SIZE + 1;
+  const endItem = Math.min(
+    salesProductCurrentPage * SALES_PRODUCT_PAGE_SIZE,
+    totalItems
+  );
+
+  info.textContent = `Menampilkan ${startItem}-${endItem} dari ${totalItems} produk`;
+
+  const pageNumbers = [];
+  const addPage = (page) => {
+    if (!pageNumbers.includes(page)) pageNumbers.push(page);
+  };
+
+  addPage(1);
+  for (let page = salesProductCurrentPage - 1; page <= salesProductCurrentPage + 1; page++) {
+    if (page >= 1 && page <= totalPages) addPage(page);
+  }
+  addPage(totalPages);
+  pageNumbers.sort((a, b) => a - b);
+
+  let html = `
+    <button type="button"
+      class="sales-product-page-btn"
+      ${salesProductCurrentPage <= 1 ? 'disabled' : ''}
+      onclick="changeSalesProductPage(-1)"
+      aria-label="Halaman sebelumnya">
+      <i class="bi bi-chevron-left"></i>
+    </button>
+  `;
+
+  let previousPage = null;
+  pageNumbers.forEach(page => {
+    if (previousPage !== null && page - previousPage > 1) {
+      html += `<span class="sales-product-page-ellipsis">...</span>`;
+    }
+
+    html += `
+      <button type="button"
+        class="sales-product-page-btn ${page === salesProductCurrentPage ? 'active' : ''}"
+        onclick="goToSalesProductPage(${page})"
+        ${page === salesProductCurrentPage ? 'aria-current="page"' : ''}>
+        ${page}
+      </button>
+    `;
+
+    previousPage = page;
+  });
+
+  html += `
+    <button type="button"
+      class="sales-product-page-btn"
+      ${salesProductCurrentPage >= totalPages ? 'disabled' : ''}
+      onclick="changeSalesProductPage(1)"
+      aria-label="Halaman berikutnya">
+      <i class="bi bi-chevron-right"></i>
+    </button>
+  `;
+
+  buttons.innerHTML = html;
+}
+
+function resetSalesProductPagination() {
+  salesProductCurrentPage = 1;
+  salesProductFilterSignature = '';
+}
+
+function changeSalesProductPage(direction) {
+  const nextPage = salesProductCurrentPage + Number(direction || 0);
+  if (nextPage < 1) return;
+
+  salesProductCurrentPage = nextPage;
+  renderOrderProducts();
+}
+
+function goToSalesProductPage(page) {
+  const targetPage = Number(page);
+  if (!Number.isInteger(targetPage) || targetPage < 1) return;
+
+  salesProductCurrentPage = targetPage;
+  renderOrderProducts();
+}
+
 function renderOrderProducts() {
   const container = document.getElementById('orderProductList');
   if (!container) return;
@@ -6833,6 +7181,18 @@ function renderOrderProducts() {
   const selectedSalesType = (document.getElementById('orderSalesTypeFilter')?.value || '')
     .trim()
     .toLowerCase();
+
+  // Jika pencarian/filter berubah, otomatis kembali ke halaman pertama.
+  const filterSignature = JSON.stringify([
+    keyword,
+    selectedCategory,
+    selectedSalesType
+  ]);
+
+  if (salesProductFilterSignature !== filterSignature) {
+    salesProductCurrentPage = 1;
+    salesProductFilterSignature = filterSignature;
+  }
 
   const filteredProducts = (products || []).filter(p => {
     const productName = String(p.name || '').toLowerCase();
@@ -6853,13 +7213,33 @@ function renderOrderProducts() {
     return matchesKeyword && matchesCategory && matchesSalesType;
   });
 
-  if (!filteredProducts.length) {
+  const totalItems = filteredProducts.length;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalItems / SALES_PRODUCT_PAGE_SIZE)
+  );
+
+  if (salesProductCurrentPage > totalPages) {
+    salesProductCurrentPage = totalPages;
+  }
+
+  if (!totalItems) {
     container.innerHTML =
       '<div class="text-center py-5 text-muted w-100">Produk tidak ditemukan sesuai pencarian atau filter yang dipilih.</div>';
+
+    updateSalesProductPagination(0, 1);
     return;
   }
 
-  container.innerHTML = filteredProducts.map(p => {
+  const startIndex =
+    (salesProductCurrentPage - 1) * SALES_PRODUCT_PAGE_SIZE;
+
+  const displayProducts = filteredProducts.slice(
+    startIndex,
+    startIndex + SALES_PRODUCT_PAGE_SIZE
+  );
+
+  container.innerHTML = displayProducts.map(p => {
     const imageUrl = normalizeProductImageUrl(p.image || '');
     const cartItem = (cart || []).find(c => String(c.id) === String(p.id));
     const unlimitedStock = isUnlimitedStock(p);
@@ -6924,6 +7304,8 @@ function renderOrderProducts() {
         </div>
       </div>`;
   }).join('');
+
+  updateSalesProductPagination(totalItems, totalPages);
 }
 
 function openSalesCartFromProduct() {
@@ -7439,28 +7821,51 @@ async function postGAS(payload) {
     throw new Error('URL Apps Script belum diisi.');
   }
 
-  // no-cors tetap digunakan agar Web App Apps Script dapat menerima data lintas domain.
-  // Timeout mencegah tombol pembayaran terasa macet terlalu lama saat jaringan bermasalah.
-  const controller = new AbortController();
-  const timeout = setTimeout(()=>controller.abort(), 20000);
+  const action = String(payload?.action || '');
+  const isTransaction = action === 'createTransaction' || action === 'transaction' || action === 'checkout';
+  const maxAttempts = isTransaction ? 2 : 1;
+  const timeoutMs = isTransaction ? 12000 : 20000;
+  let lastError = null;
 
-  try{
-    await fetch(GAS_URL, {
-      method:'POST',
-      mode:'no-cors',
-      cache:'no-store',
-      redirect:'follow',
-      signal:controller.signal,
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body:JSON.stringify(payload)
-    });
-    if (['createTransaction','refundTransaction','create','update','delete'].includes(String(payload?.action || ''))) {
+  for(let attempt=1; attempt<=maxAttempts; attempt++){
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try{
+      await fetch(GAS_URL, {
+        method:'POST',
+        mode:'no-cors',
+        cache:'no-store',
+        redirect:'follow',
+        signal:controller.signal,
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify(payload)
+      });
+
       invalidateProductCache();
+      return true;
+
+    }catch(error){
+      lastError = error;
+
+      if(attempt < maxAttempts){
+        // createTransaction memakai ID transaksi yang sama. Backend idempotency
+        // akan mencegah retry membuat history ganda.
+        await new Promise(resolve => setTimeout(resolve, 450));
+      }
+    }finally{
+      clearTimeout(timeout);
     }
-    return true;
-  }finally{
-    clearTimeout(timeout);
   }
+
+  if(lastError?.name === 'AbortError'){
+    throw new Error('Koneksi database terlalu lama. Silakan coba lagi. Jika transaksi sudah diterima server, sistem akan mencegah transaksi ganda.');
+  }
+
+  throw new Error(
+    'Tidak dapat menghubungi Google Apps Script. Pastikan Web App aktif dan aksesnya benar. Detail: ' +
+    (lastError?.message || 'Failed to fetch')
+  );
 }
 
 async function autoRefreshAfterPayment(soldItems = []){
@@ -7468,7 +7873,6 @@ async function autoRefreshAfterPayment(soldItems = []){
   // Stok sudah diperbarui secara lokal saat pembayaran, sehingga cukup satu
   // sinkronisasi tertunda setelah Apps Script selesai menulis data.
   try {
-    await new Promise(resolve => setTimeout(resolve, 1800));
     await fetchProductsFromGAS(true);
 
     if (typeof renderOrderProducts === 'function') renderOrderProducts();
@@ -7542,9 +7946,16 @@ async function processPayment() {
     JENIS_STOK: normalizeStockType(products.find(p => String(p.id) === String(item.id)) || item)
   }));
 
-  // ID dibuat dari aplikasi dan dikirim ke Code.gs agar nomor pada resi
-  // sama dengan ID transaksi yang disimpan di Spreadsheet.
-  const transactionId = generateClientTransactionId();
+  // ID transaksi dibuat SEKALI untuk satu checkout.
+  // Jika request gagal/timeout lalu pengguna mengulang pembayaran,
+  // ID yang sama dipakai kembali sehingga backend dapat melakukan
+  // idempotency dan tidak membuat transaksi ganda.
+  const checkoutFingerprint = buildCheckoutFingerprint(
+    items,
+    discountPercent,
+    priceCut
+  );
+  const transactionId = getOrCreateCheckoutTransactionId(checkoutFingerprint);
 
   // Jangan menunggu database pengaturan resi saat pembayaran.
   // Gunakan cache/memori agar cetak otomatis dapat dimulai secepat mungkin.
@@ -7591,6 +8002,10 @@ async function processPayment() {
     // Pembayaran dianggap selesai setelah request berhasil dikirim ke Apps Script.
     // Tutup popup dan bersihkan UI terlebih dahulu agar kasir tidak perlu menunggu refresh database.
     closeModalSafely('paymentModal');
+
+    // Request sudah diterima dan dianggap berhasil oleh aplikasi.
+    // Hapus ID pending agar transaksi berikutnya membuat ID baru.
+    clearPendingCheckout(transactionId);
 
     cart = [];
 
@@ -7671,813 +8086,143 @@ async function processPayment() {
 }
 
 // =====================================================
-// PERBAIKAN ERROR HISTORY TRANSAKSI
-// Code.gs menggunakan action=history atau action=readHistory.
 // =====================================================
-// HISTORY TRANSAKSI + FILTER HARIAN / MINGGUAN / BULANAN
+// HISTORY TRANSAKSI - SERVER SIDE PAGINATION
+// Hanya mengambil 15 baris yang sedang ditampilkan dari Apps Script.
+// Data lama di localStorage dipakai sebagai tampilan instan/fallback.
 // =====================================================
 let transactionHistory = [];
 let currentHistoryFilter = 'daily';
 let historyPage = 1;
 const HISTORY_PAGE_SIZE = 15;
+let historyMeta = { page:1, limit:HISTORY_PAGE_SIZE, total:0, totalPages:0, hasMore:false };
+let historyFetchPromise = null;
+let historyFetchKey = '';
+let historyRequestSeq = 0;
+const HISTORY_LOCAL_CACHE_KEY = 'joanna_history_page_cache_v3';
+const HISTORY_LOCAL_CACHE_TTL = 10 * 60 * 1000;
+const HISTORY_FETCH_TTL = 60 * 1000;
+const HISTORY_PREFETCH_TTL = 120 * 1000;
 
-function setHistoryFilter(filter, button) {
+function historyFilterToServerPeriod(){
+  const map = {daily:'HARIAN',weekly:'MINGGUAN',monthly:'BULANAN',yearly:'TAHUNAN'};
+  return map[currentHistoryFilter] || 'HARIAN';
+}
+
+function getHistoryDateRange(){
+  const fromInput = document.getElementById('historyDateFrom');
+  const toInput = document.getElementById('historyDateTo');
+  const fromValue = fromInput?.value || '';
+  const toValue = toInput?.value || '';
+  return {fromValue, toValue};
+}
+
+function historyCacheKey(){
+  const r = getHistoryDateRange();
+  return ['v4', historyFilterToServerPeriod(), r.fromValue, r.toValue, historyPage].join('|');
+}
+
+function saveHistoryLocalCache(data){
+  try{
+    const all = JSON.parse(localStorage.getItem(HISTORY_LOCAL_CACHE_KEY) || '{}');
+    all[historyCacheKey()] = {time:Date.now(), data, meta:historyMeta};
+    const keys = Object.keys(all);
+    if(keys.length > 30) keys.slice(0, keys.length-30).forEach(k=>delete all[k]);
+    localStorage.setItem(HISTORY_LOCAL_CACHE_KEY, JSON.stringify(all));
+  }catch(_){ }
+}
+
+function getHistoryLocalCache(allowStale = false){
+  try{
+    const all = JSON.parse(localStorage.getItem(HISTORY_LOCAL_CACHE_KEY) || '{}');
+    const item = all[historyCacheKey()];
+    if(!item) return null;
+    const stale = Date.now()-item.time > HISTORY_LOCAL_CACHE_TTL;
+    if(stale && !allowStale) return null;
+    return {...item, stale};
+  }catch(_){ return null; }
+}
+
+// Halaman berikutnya diambil diam-diam setelah tabel tampil, sehingga
+// klik "Halaman berikutnya" terasa instan (data sudah ada di memori).
+function buildHistoryUrl(period, range, page){
+  const params=new URLSearchParams({
+    action:'history',
+    period:period,
+    page:String(page),
+    limit:String(HISTORY_PAGE_SIZE)
+  });
+  if(range.fromValue) params.set('from',range.fromValue);
+  if(range.toValue) params.set('to',range.toValue);
+  return `${GAS_URL}?${params.toString()}`;
+}
+
+function prefetchHistoryPages(period, range, totalPages){
+  const targets=[historyPage+1, historyPage-1]
+    .filter(p => p>=1 && p<=Math.max(1, Number(totalPages)||1) && p!==historyPage);
+  if(!targets.length || !GAS_URL) return;
+
+  const run=()=>targets.forEach(p=>{
+    appFetchJSON(buildHistoryUrl(period, range, p), {}, HISTORY_PREFETCH_TTL).catch(()=>{});
+  });
+
+  if(typeof requestIdleCallback === 'function') requestIdleCallback(run, {timeout:1500});
+  else setTimeout(run, 300);
+}
+
+function setHistoryFilter(filter, button){
   currentHistoryFilter = filter;
   historyPage = 1;
   document.querySelectorAll('.history-filter').forEach(b => b.classList.remove('active'));
-  if (button) button.classList.add('active');
-  renderTransactionHistory();
-}
-function parseSheetDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  const str=String(value).trim();
-  const direct=new Date(str);
-  if (!Number.isNaN(direct.getTime())) return direct;
-  const m=str.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
-  return m ? new Date(Number(m[3]),Number(m[2])-1,Number(m[1])) : null;
-}
-function getHistoryDateRange() {
-  const fromInput = document.getElementById('historyDateFrom');
-  const toInput = document.getElementById('historyDateTo');
-
-  const fromValue = fromInput ? fromInput.value : '';
-  const toValue = toInput ? toInput.value : '';
-
-  const from = fromValue ? new Date(fromValue + 'T00:00:00') : null;
-  const to = toValue ? new Date(toValue + 'T23:59:59.999') : null;
-
-  return { from, to, fromValue, toValue };
+  if(button) button.classList.add('active');
+  loadTransactionHistory(false);
 }
 
-function applyHistoryDateRange() {
-  const range = getHistoryDateRange();
-
-  if (!range.fromValue && !range.toValue) {
+function applyHistoryDateRange(){
+  const {fromValue,toValue} = getHistoryDateRange();
+  if(!fromValue && !toValue){
     alert('Silakan pilih Tanggal A atau Tanggal B terlebih dahulu.');
     return;
   }
-
-  if (range.from && range.to && range.from > range.to) {
+  if(fromValue && toValue && fromValue > toValue){
     alert('Tanggal A tidak boleh lebih besar dari Tanggal B.');
     return;
   }
-
-  // Rentang tanggal menjadi prioritas pencarian.
   historyPage = 1;
   document.querySelectorAll('.history-filter').forEach(b => b.classList.remove('active'));
-  renderTransactionHistory();
+  loadTransactionHistory(false);
 }
 
-function resetHistoryDateRange() {
-  historyPage = 1;
-  const fromInput = document.getElementById('historyDateFrom');
-  const toInput = document.getElementById('historyDateTo');
-
-  if (fromInput) fromInput.value = '';
-  if (toInput) toInput.value = '';
-
-  // Kembali ke filter yang sedang aktif.
-  const activeButton = document.querySelector('.history-filter.active');
-  if (activeButton) {
-    const filter = activeButton.dataset.historyFilter;
-    currentHistoryFilter = filter || 'daily';
-  }
-
-  renderTransactionHistory();
+function resetHistoryDateRange(){
+  document.getElementById('historyDateFrom')?.setAttribute('value','');
+  document.getElementById('historyTo')?.setAttribute('value','');
+  const from = document.getElementById('historyDateFrom');
+  const to = document.getElementById('historyDateTo');
+  if(from) from.value='';
+  if(to) to.value='';
+  historyPage=1;
+  const activeButton=document.querySelector('.history-filter.active');
+  currentHistoryFilter=activeButton?.dataset.historyFilter || currentHistoryFilter || 'daily';
+  loadTransactionHistory(false);
 }
 
-function isInHistoryPeriod(item) {
-  const d = parseSheetDate(item.TANGGAL || item.tanggal);
-  if (!d) return false;
-
-  const range = getHistoryDateRange();
-
-  // Jika Tanggal A dan/atau Tanggal B dipilih, gunakan pencarian rentang tanggal.
-  if (range.from || range.to) {
-    if (range.from && d < range.from) return false;
-    if (range.to && d > range.to) return false;
-    return true;
-  }
-
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  if (currentHistoryFilter === 'daily') {
-    return d.getFullYear() === now.getFullYear() &&
-           d.getMonth() === now.getMonth() &&
-           d.getDate() === now.getDate();
-  }
-
-  if (currentHistoryFilter === 'weekly') {
-    const start = new Date(startToday);
-    start.setDate(start.getDate() - 6);
-    return d >= start &&
-           d <= new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-  }
-
-  if (currentHistoryFilter === 'monthly') {
-    return d.getFullYear() === now.getFullYear() &&
-           d.getMonth() === now.getMonth();
-  }
-
-  if (currentHistoryFilter === 'yearly') {
-    return d.getFullYear() === now.getFullYear();
-  }
-
-  return true;
-}
-
-// =====================================================
-// POP UP HISTORI TRANSAKSI DARI MENU PENGATURAN
-// Tidak berpindah ke halaman History Transaksi.
-// Periode dibatasi tepat: 1 hari / 7 hari / 1 bulan / 1 tahun.
-// =====================================================
-let settingsHistoryFilter = 'daily';
-let settingsHistoryCategory = 'success';
-let settingsHistoryAnchorDate = new Date();
-
-function getSettingsHistoryBounds() {
-  const anchor = new Date(settingsHistoryAnchorDate);
-  anchor.setHours(0,0,0,0);
-  let from, to;
-
-  if (settingsHistoryFilter === 'daily') {
-    from = new Date(anchor);
-    to = new Date(anchor); to.setHours(23,59,59,999);
-  } else if (settingsHistoryFilter === 'weekly') {
-    from = new Date(anchor); from.setDate(from.getDate() - 6); from.setHours(0,0,0,0);
-    to = new Date(anchor); to.setHours(23,59,59,999);
-  } else if (settingsHistoryFilter === 'monthly') {
-    from = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-    to = new Date(anchor.getFullYear(), anchor.getMonth()+1, 0, 23,59,59,999);
-  } else {
-    from = new Date(anchor.getFullYear(), 0, 1);
-    to = new Date(anchor.getFullYear(), 11, 31, 23,59,59,999);
-  }
-  return {from, to};
-}
-
-function formatSettingsHistoryPeriod(from, to) {
-  const dateOpt = { day:'2-digit', month:'long', year:'numeric' };
-  const monthOpt = { month:'long', year:'numeric' };
-  if (settingsHistoryFilter === 'daily') return from.toLocaleDateString('id-ID', dateOpt);
-  if (settingsHistoryFilter === 'weekly') return from.toLocaleDateString('id-ID', dateOpt) + ' — ' + to.toLocaleDateString('id-ID', dateOpt);
-  if (settingsHistoryFilter === 'monthly') return from.toLocaleDateString('id-ID', monthOpt);
-  return String(from.getFullYear());
-}
-
-function updateSettingsHistoryPeriodLabel() {
-  const el = document.getElementById('settingsHistoryPeriodLabel');
-  if (!el) return;
-  const {from,to} = getSettingsHistoryBounds();
-  el.textContent = formatSettingsHistoryPeriod(from,to);
-}
-
-function shiftSettingsHistoryPeriod(direction) {
-  const d = new Date(settingsHistoryAnchorDate);
-  if (settingsHistoryFilter === 'daily') d.setDate(d.getDate() + direction);
-  else if (settingsHistoryFilter === 'weekly') d.setDate(d.getDate() + (direction * 7));
-  else if (settingsHistoryFilter === 'monthly') d.setMonth(d.getMonth() + direction);
-  else d.setFullYear(d.getFullYear() + direction);
-  settingsHistoryAnchorDate = d;
-  renderSettingsHistoryPopup();
-}
-
-function isSettingsHistoryRefund(item){
-  const refundStatus = String(item?.STATUS_REFUND || '').trim().toUpperCase();
-  const transactionStatus = String(item?.STATUS_TRANSAKSI || item?.STATUS || '').trim().toUpperCase();
-  return refundStatus === 'YA' || refundStatus === 'SEBAGIAN' ||
-         transactionStatus === 'REFUND' || transactionStatus === 'SEBAGIAN REFUND' ||
-         transactionStatus.includes('REFUND');
-}
-
-function isSettingsHistoryCancelled(item){
-  const orderStatus = String(item?.STATUS_PESANAN || '').trim().toUpperCase();
-  const transactionStatus = String(item?.STATUS_TRANSAKSI || item?.STATUS || '').trim().toUpperCase();
-  return orderStatus === 'DIBATALKAN' || transactionStatus === 'DIBATALKAN' || transactionStatus.includes('DIBATALKAN');
-}
-
-function getSettingsHistoryData() {
-  const {from,to} = getSettingsHistoryBounds();
-  return (Array.isArray(transactionHistory) ? transactionHistory : [])
-    .filter(item => {
-      const d = parseSheetDate(item.TANGGAL || item.tanggal);
-      if (!(d && d >= from && d <= to)) return false;
-
-      if (settingsHistoryCategory === 'refund') return isSettingsHistoryRefund(item);
-      if (settingsHistoryCategory === 'cancelled') return isSettingsHistoryCancelled(item);
-      return !isSettingsHistoryRefund(item) && !isSettingsHistoryCancelled(item);
-    })
-    .sort((a,b) => (parseSheetDate(b.TANGGAL || b.tanggal) || new Date(0)) - (parseSheetDate(a.TANGGAL || a.tanggal) || new Date(0)));
-}
-
-// =====================================================
-// TOTAL TRANSAKSI SETELAH REFUND
-// =====================================================
-// TOTAL pada History Transaksi HARUS menampilkan sisa nilai transaksi,
-// bukan nominal barang yang di-refund.
-function parseTransactionMoney(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  if (value === undefined || value === null || value === '') return 0;
-  const normalized = String(value)
-    .replace(/[^0-9,-]/g,'')
-    .replace(/\./g,'')
-    .replace(',','.');
-  return Number(normalized) || 0;
-}
-
-function getTransactionTotal(item) {
-  if (!item || typeof item !== 'object') return 0;
-
-  // Prioritas utama: nilai sisa transaksi setelah refund.
-  const remainingKeys = [
-    'TOTAL_PEMBELIAN_SETELAH_REFUND',
-    'TOTAL_PEMBELIAN_SISA',
-    'TOTAL_SETELAH_REFUND',
-    'TOTAL_SISA'
-  ];
-
-  for (const key of remainingKeys) {
-    if (item[key] !== undefined && item[key] !== null && item[key] !== '') {
-      return Math.max(0, parseTransactionMoney(item[key]));
-    }
-  }
-
-  // TOTAL_PEMBELIAN pada data terbaru juga merupakan nilai transaksi yang
-  // sudah diperbarui oleh proses refund.
-  const raw = item.TOTAL_PEMBELIAN ?? item.TOTAL ?? item.total ?? item.TOTAL_PEMBAYARAN ?? item.totalPembayaran ?? 0;
-  return Math.max(0, parseTransactionMoney(raw));
-}
-
-function getTransactionProductQty(item) {
-  const details = getHistoryDetails(item);
-  if (details.length) return details.reduce((sum, x) => sum + (getPurchasedQty(x) ?? 1), 0);
-  return getPurchasedQty(item) ?? 0;
-}
-
-function getHistoryDetails(item) {
-  if (!item || typeof item !== 'object') return [];
-  const candidates = [
-    item.HISTORY_DETAILS, item.historyDetails, item.__DETAILS,
-    item.DETAIL_PESANAN, item.detailPesanan,
-    item.ITEMS, item.items,
-    item.DETAIL_PRODUK, item.detailProduk,
-    item.DETAILS, item.details,
-    item.PRODUK, item.produk,
-    item.BARANG, item.barang
-  ];
-
-  for (const value of candidates) {
-    if (value === undefined || value === null || value === '') continue;
-    let parsed = value;
-    try { if (typeof value === 'string') parsed = JSON.parse(value); } catch (e) { continue; }
-    if (Array.isArray(parsed)) return parsed.filter(Boolean);
-    if (parsed && typeof parsed === 'object') return [parsed];
-  }
-  return [];
-}
-
-function getPurchasedQty(detail) {
-  if (!detail || typeof detail !== 'object') return null;
-  const raw =
-    detail.JUMLAH ?? detail.jumlah ?? detail.QTY ?? detail.qty ??
-    detail.QUANTITY ?? detail.quantity ?? detail.JUMLAH_BELI ?? detail.jumlahBeli ??
-    detail.STOK_DIBELI ?? detail.stokDibeli ?? detail.STOK ?? detail.stok;
-  if (raw === undefined || raw === null || raw === '') return null;
-  const n = Number(String(raw).replace(/[^\d,-]/g,'').replace(/\./g,'').replace(',','.'));
-  return Number.isFinite(n) ? n : null;
-}
-
-function getHistoryDetailName(detail, fallbackIndex = 0) {
-  const direct = detail?.NAMA_PRODUK || detail?.nama_produk || detail?.namaProduk ||
-    detail?.PRODUCT_NAME || detail?.NAMA || detail?.name || '';
-  if (String(direct).trim()) return String(direct).trim();
-
-  const catalog = [...(Array.isArray(gasProducts) ? gasProducts : []), ...(Array.isArray(products) ? products : [])];
-  const norm = v => String(v ?? '').trim().toLowerCase().replace(/[\s_\-]/g,'');
-  const ids = [detail?.ID_RING, detail?.ID_PRODUK, detail?.ID_PRODUCT, detail?.PRODUCT_ID, detail?.ID, detail?.id,
-    detail?.KODE_PRODUK, detail?.kodeProduk, detail?.SKU, detail?.sku, detail?.BARCODE, detail?.barcode]
-    .filter(v => v !== undefined && v !== null && String(v).trim() !== '');
-
-  const product = catalog.find(p => ids.some(id => [
-    p?.ID_RING, p?.ID_PRODUK, p?.ID, p?.id, p?.KODE_PRODUK, p?.kodeProduk,
-    p?.SKU, p?.sku, p?.BARCODE, p?.barcode
-  ].some(v => norm(v) && norm(v) === norm(id))));
-
-  return String(product?.NAMA_PRODUK || product?.namaProduk || product?.name || `Produk ${fallbackIndex + 1}`).trim();
-}
-
-function getSettingsHistoryStatusBadge(item){
-  if(isSettingsHistoryCancelled(item)) return '<span class="badge-soft badge-slate" style="background:#fef3c7;color:#92400e;">DIBATALKAN</span>';
-  if(isSettingsHistoryRefund(item)){
-    const partial = String(item?.STATUS_REFUND || '').toUpperCase()==='SEBAGIAN' ||
-      String(item?.STATUS_TRANSAKSI || '').toUpperCase().includes('SEBAGIAN');
-    return `<span class="badge-soft ${partial ? 'badge-blue' : 'badge-red'}">${partial ? 'SEBAGIAN REFUND' : 'REFUND'}</span>`;
-  }
-  return '<span class="badge-soft badge-green">BERHASIL</span>';
-}
-
-function renderSettingsHistoryPopup() {
-  const body = document.getElementById('settingsHistoryTableBody');
-  if (!body) return;
-  updateSettingsHistoryPeriodLabel();
-
-  const data = getSettingsHistoryData();
-  const totalPayment = data.reduce((sum,x) => sum + getTransactionTotal(x), 0);
-  const productQty = data.reduce((sum,x) => sum + getTransactionProductQty(x), 0);
-
-  const countEl = document.getElementById('settingsHistoryTransactionCount');
-  const totalEl = document.getElementById('settingsHistoryTotalPayment');
-  const qtyEl = document.getElementById('settingsHistoryProductQty');
-  if (countEl) countEl.textContent = data.length;
-  if (totalEl) totalEl.textContent = formatRupiah(totalPayment);
-  if (qtyEl) qtyEl.textContent = productQty;
-
-  if (!data.length) {
-    const message = settingsHistoryCategory === 'success' ? 'Belum ada pesanan berhasil pada periode ini.' :
-      settingsHistoryCategory === 'refund' ? 'Belum ada data refund pada periode ini.' :
-      'Belum ada pesanan yang dibatalkan pada periode ini.';
-    body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">${message}</td></tr>`;
-    return;
-  }
-
-  body.innerHTML = data.map(x => {
-    const id = String(x.ID_PEMESANAN || x.ID || '-');
-    const date = x.TANGGAL || x.tanggal || '-';
-    return `<tr>
-      <td><strong>${escapeHtml(id)}</strong></td>
-      <td>${escapeHtml(String(date))}</td>
-      <td>${escapeHtml(String(x.JAM || x.jam || '-'))}</td>
-      <td><strong>${formatRupiah(getTransactionTotal(x))}</strong></td>
-      <td>${escapeHtml(String(x.METODE_PEMBAYARAN || x.METODE || x.metode || '-'))}</td>
-      <td>${getSettingsHistoryStatusBadge(x)}</td>
-      <td class="text-center">
-        <button type="button" class="btn btn-sm btn-action-update" onclick="openSettingsHistoryDetail('${id.replace(/'/g,"\\'")}')">
-          <i class="bi bi-eye me-1"></i>Detail
-        </button>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function getFirstAvailableDate(obj, keys){
-  for(const key of keys){
-    const value = obj?.[key];
-    if(value !== undefined && value !== null && String(value).trim() !== '') return value;
-  }
-  return '-';
-}
-
-function formatSettingsDetailDate(value){
-  if(value === '-' || value === null || value === undefined || value === '') return '-';
-  const d = parseSheetDate(value);
-  if(!d) return String(value);
-  return d.toLocaleString('id-ID',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
-}
-
-async function openSettingsHistoryDetail(idPesanan){
-  const modalEl = document.getElementById('settingsHistoryDetailModal');
-  const loading = document.getElementById('settingsHistoryDetailLoading');
-  const content = document.getElementById('settingsHistoryDetailContent');
-  const productBody = document.getElementById('settingsHistoryDetailProductBody');
-  const refundCard = document.getElementById('settingsHistoryRefundDateCard');
-  const cancelledCard = document.getElementById('settingsHistoryCancelledDateCard');
-  const comparison = document.getElementById('settingsHistoryRefundComparison');
-  const normalSection = document.getElementById('settingsHistoryNormalProductSection');
-
-  const trx = (transactionHistory || []).find(x => String(x.ID_PEMESANAN || x.ID) === String(idPesanan));
-  if(!trx) return showToast('Data Tidak Ditemukan','Riwayat pesanan tidak ditemukan.','red');
-
-  document.getElementById('settingsHistoryDetailId').textContent = `ID Pesanan: ${idPesanan}`;
-  loading.style.display='block';
-  content.style.display='none';
-  bootstrap.Modal.getOrCreateInstance(modalEl).show();
-
-  let order = trx;
-  let details = getHistoryDetails(trx);
-  let refundHistory = [];
-
-  try{
-    const response = await fetch(`${GAS_URL}?action=transaction&id=${encodeURIComponent(idPesanan)}&ts=${Date.now()}`,{cache:'no-store'});
-    const json = await response.json();
-    if(json.success && json.data){
-      order = {...trx,...(json.data.order || {})};
-      if(Array.isArray(json.data.details) && json.data.details.length) details = json.data.details;
-      if(Array.isArray(json.data.refundHistory)) refundHistory = json.data.refundHistory;
-    }
-  }catch(error){
-    console.warn('Detail API tidak tersedia, memakai data histori lokal.',error);
-  }
-
-  const isRefund = isSettingsHistoryRefund(order);
-  const isCancelled = isSettingsHistoryCancelled(order);
-
-  document.getElementById('settingsHistoryDetailPurchaseDate').textContent =
-    formatSettingsDetailDate(getFirstAvailableDate(order,['TANGGAL','tanggal','TANGGAL_PEMBELIAN','TANGGAL_DIBELI']));
-  document.getElementById('settingsHistoryDetailStatus').innerHTML = getSettingsHistoryStatusBadge(order);
-
-  const refundDate = getFirstAvailableDate(order,[
-    'TANGGAL_REFUND','tanggalRefund','TGL_REFUND','REFUND_DATE','WAKTU_REFUND','TANGGAL_PENGEMBALIAN'
-  ]);
-  const cancelledDate = getFirstAvailableDate(order,[
-    'TANGGAL_DIBATALKAN','tanggalDibatalkan','TGL_DIBATALKAN','CANCELLED_AT','TANGGAL_BATAL'
-  ]);
-
-  refundCard.style.display = isRefund ? '' : 'none';
-  cancelledCard.style.display = isCancelled ? '' : 'none';
-  document.getElementById('settingsHistoryDetailRefundDate').textContent = formatSettingsDetailDate(refundDate);
-  document.getElementById('settingsHistoryDetailCancelledDate').textContent = formatSettingsDetailDate(cancelledDate);
-
-  // =====================================================
-  // POPUP KHUSUS REFUND
-  // Ambil snapshot refund terakhir agar pengguna dapat
-  // membandingkan kondisi SEBELUM dan SESUDAH refund.
-  // =====================================================
-  const latestRefund = refundHistory.length ? refundHistory[refundHistory.length - 1] : null;
-
-  if(isRefund && latestRefund){
-    comparison.style.display = '';
-    normalSection.style.display = 'none';
-
-    const before = latestRefund.DATA_SEBELUM || {};
-    const after = latestRefund.DATA_SESUDAH || {};
-    const refundData = latestRefund.DATA_REFUND || {};
-    const beforeOrder = before.order || {};
-    const afterOrder = after.order || {};
-    const beforeDetails = Array.isArray(before.details) ? before.details : [];
-    const afterDetails = Array.isArray(after.details) ? after.details : [];
-
-    const productName = (detail,index) => {
-      const id = detail?.ID_PRODUK || detail?.ID_RING || detail?.id || '';
-      const product = (products || []).find(p =>
-        String(p.id || p.ID_PRODUK || p.ID_RING || '') === String(id)
-      );
-      return getHistoryDetailName(detail,index) ||
-        product?.name || product?.NAMA_PRODUK || product?.NAMA || `Produk ${index+1}`;
-    };
-
-    document.getElementById('settingsHistoryBeforeTotal').textContent =
-      formatRupiah(parseTransactionMoney(beforeOrder.TOTAL_PEMBELIAN ?? latestRefund.TOTAL_SEBELUM ?? 0));
-    document.getElementById('settingsHistoryAfterTotal').textContent =
-      formatRupiah(parseTransactionMoney(afterOrder.TOTAL_PEMBELIAN ?? latestRefund.TOTAL_SESUDAH ?? 0));
-    document.getElementById('settingsHistoryBeforeStatus').textContent =
-      beforeOrder.STATUS_TRANSAKSI || latestRefund.STATUS_SEBELUM || '-';
-    document.getElementById('settingsHistoryAfterStatus').textContent =
-      afterOrder.STATUS_TRANSAKSI || latestRefund.STATUS_SESUDAH || '-';
-
-    document.getElementById('settingsHistoryBeforeRefundBody').innerHTML = beforeDetails.length
-      ? beforeDetails.map((detail,index)=>`<tr>
-          <td><strong>${escapeHtml(productName(detail,index))}</strong></td>
-          <td class="text-center"><span class="badge-soft badge-blue">${Number(detail.JUMLAH)||0}</span></td>
-          <td class="text-end">${formatRupiah(parseTransactionMoney(detail.SUBTOTAL || 0))}</td>
-        </tr>`).join('')
-      : '<tr><td colspan="3" class="text-center text-muted py-4">Snapshot sebelum refund tidak tersedia.</td></tr>';
-
-    document.getElementById('settingsHistoryAfterRefundBody').innerHTML = afterDetails.length
-      ? afterDetails.map((detail,index)=>`<tr>
-          <td><strong>${escapeHtml(productName(detail,index))}</strong></td>
-          <td class="text-center"><span class="badge-soft badge-red">${Number(detail.JUMLAH)||0}</span></td>
-          <td class="text-end">${formatRupiah(parseTransactionMoney(detail.SUBTOTAL || 0))}</td>
-        </tr>`).join('')
-      : '<tr><td colspan="3" class="text-center text-muted py-4">Snapshot sesudah refund tidak tersedia.</td></tr>';
-
-    const refundItems = Array.isArray(refundData.ITEMS) ? refundData.ITEMS : [];
-    document.getElementById('settingsHistorySnapshotDate').textContent =
-      formatSettingsDetailDate(latestRefund.TANGGAL_REFUND || refundDate);
-    document.getElementById('settingsHistoryRefundNominal').textContent =
-      formatRupiah(parseTransactionMoney(refundData.TOTAL_NOMINAL_REFUND || 0));
-    document.getElementById('settingsHistoryRefundQty').textContent =
-      `${Number(refundData.TOTAL_QTY_REFUND || 0)} item (${refundItems.length} produk)`;
-    document.getElementById('settingsHistoryRefundComparisonLabel').textContent =
-      refundHistory.length > 1 ? `REFUND KE-${refundHistory.length}` : 'REFUND TERAKHIR';
-
-  }else{
-    comparison.style.display = 'none';
-    normalSection.style.display = '';
-
-    if(!details.length){
-      productBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-4">Detail produk belum tersedia.</td></tr>';
-    }else{
-      productBody.innerHTML = details.map((detail,index)=>{
-        const name = getHistoryDetailName(detail,index);
-        const qty = getPurchasedQty(detail);
-        return `<tr><td><strong>${escapeHtml(name)}</strong></td><td class="text-center"><span class="badge-soft badge-green">${qty === null ? 1 : qty}</span></td></tr>`;
-      }).join('');
-    }
-
-    // Transaksi lama yang sudah refund sebelum fitur snapshot dipasang
-    // tidak dapat direkonstruksi otomatis karena data Detail_Pesanan sudah
-    // berubah. Tampilkan informasi yang jujur kepada pengguna.
-    if(isRefund && !latestRefund){
-      normalSection.style.display = '';
-      productBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-4"><i class="bi bi-info-circle me-1"></i>Snapshot sebelum/ sesudah refund belum tersedia untuk transaksi lama. Snapshot akan otomatis tersimpan pada refund berikutnya.</td></tr>';
-    }
-  }
-
-  loading.style.display='none';
-  content.style.display='block';
-}
-async function openSettingsHistoryPopup() {
-  const modalEl = document.getElementById('settingsHistoryModal');
-  if (!modalEl) return;
-  const body = document.getElementById('settingsHistoryTableBody');
-  settingsHistoryAnchorDate = new Date();
-  updateSettingsHistoryPeriodLabel();
-  if (body) body.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Memuat histori transaksi...</td></tr>';
-
-  try {
-    if (!Array.isArray(transactionHistory) || !transactionHistory.length) {
-      const json = await appFetchJSON(`${GAS_URL}?action=history&period=ALL`, {}, HISTORY_CACHE_TTL);
-      if (!json.success) throw new Error(json.message || 'Gagal memuat history.');
-      transactionHistory = Array.isArray(json.data) ? json.data : [];
-    }
-
-    transactionHistory = await enrichHistoryWithProductNames(transactionHistory);
-    renderSettingsHistoryPopup();
-  } catch(error) {
-    console.error(error);
-    if (body) body.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4"><strong>Gagal memuat Histori Transaksi.</strong><br><small>${error.message || 'Server tidak dapat dihubungi.'}</small></td></tr>`;
-  }
-
-  bootstrap.Modal.getOrCreateInstance(modalEl).show();
-}
-
-function setSettingsHistoryCategory(category, button){
-  settingsHistoryCategory = category;
-  document.querySelectorAll('.settings-history-category').forEach(b=>{
-    b.classList.remove('active','btn-accent','btn-danger','btn-warning');
-    if(b.dataset.settingsHistoryCategory === 'refund') b.classList.add('btn-outline-danger');
-    else if(b.dataset.settingsHistoryCategory === 'cancelled') b.classList.add('btn-outline-warning');
-    else b.classList.add('btn-outline-secondary');
-  });
-  if(button){
-    button.classList.add('active');
-    button.classList.remove('btn-outline-secondary','btn-outline-danger','btn-outline-warning');
-    if(category === 'refund') button.classList.add('btn-danger');
-    else if(category === 'cancelled') button.classList.add('btn-warning');
-    else button.classList.add('btn-accent');
-  }
-  renderSettingsHistoryPopup();
-}
-
-function setSettingsHistoryFilter(filter, button) {
-  settingsHistoryFilter = filter;
-  document.querySelectorAll('.settings-history-filter').forEach(b => {
-    b.classList.remove('active','btn-accent');
-    b.classList.add('btn-outline-secondary');
-  });
-  if (button) {
-    button.classList.add('active','btn-accent');
-    button.classList.remove('btn-outline-secondary');
-  }
-  renderSettingsHistoryPopup();
-}
-
-async function enrichHistoryWithProductNames(history) {
-  if (!Array.isArray(history) || !history.length) return history;
-
-  // OPTIMASI PENTING:
-  // Sebelumnya aplikasi melakukan 1 request Apps Script untuk SETIAP transaksi
-  // yang belum memiliki detail. Jika ada 1.000 transaksi, bisa terjadi 1.001 request.
-  // Sekarang histori dirender dari data history + katalog lokal saja.
-  // Detail lengkap transaksi dimuat hanya ketika transaksi tersebut benar-benar dibuka.
-  try {
-    if ((!Array.isArray(gasProducts) || !gasProducts.length) && GAS_URL) {
-      await fetchProductsFromGAS();
-    }
-  } catch (error) {
-    console.warn('Katalog produk belum dapat dimuat:', error);
-  }
-
-  const catalog = [
-    ...(Array.isArray(gasProducts) ? gasProducts : []),
-    ...(Array.isArray(products) ? products : [])
-  ];
-  const norm = value => String(value ?? '').trim().toLowerCase().replace(/[\s_\-]/g, '');
-
-  const productMap = new Map();
-  catalog.forEach(p => {
-    const name = String(p.NAMA_PRODUK || p.namaProduk || p.name || '').trim();
-    [p.ID_RING, p.ID_PRODUK, p.ID, p.id, p.KODE_PRODUK, p.kodeProduk,
-     p.SKU, p.sku, p.BARCODE, p.barcode].forEach(v => {
-      const key = norm(v);
-      if (key && name && !productMap.has(key)) productMap.set(key, name);
-    });
-  });
-
-  return history.map(trx => {
-    const existingName = String(
-      trx.NAMA_PRODUK || trx.NAMA_PRODUK_LIST || trx.PRODUCT_NAME || trx.PRODUCT_NAMES || ''
-    ).trim();
-
-    const fallbackId = trx.ID_PRODUK || trx.ID_RING || trx.ID_PRODUCT || trx.PRODUCT_ID ||
-      trx.KODE_PRODUK || trx.SKU || trx.BARCODE;
-    const fallbackName = productMap.get(norm(fallbackId)) || '';
-    const productName = existingName || fallbackName;
-
-    return {
-      ...trx,
-      ...(productName ? { NAMA_PRODUK: productName, NAMA_PRODUK_LIST: productName } : {})
-    };
-  });
-}
-let historyFetchPromise = null;
-let lastHistoryFetchAt = 0;
-const HISTORY_CACHE_TTL = 60000; // 60 detik: histori tidak perlu request berulang
-
-async function loadTransactionHistory(forceRefresh = false) {
-  const body=document.getElementById('historyTableBody');
-  if (!body) return;
-  body.innerHTML='<tr><td colspan="9" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Memuat history, nama produk, dan stok...</td></tr>';
-
-  try {
-    const endpoint = `${GAS_URL}?action=history&period=ALL`;
-    const json = await appFetchJSON(endpoint, {}, forceRefresh ? 0 : HISTORY_CACHE_TTL);
-    if (!json.success) throw new Error(json.message || 'Gagal memuat history.');
-
-    const rawHistory=Array.isArray(json.data)?json.data:[];
-
-    // Ambil nama produk dari Detail_Pesanan berdasarkan ID_PEMESANAN.
-    // Ini memperbaiki transaksi lama yang tidak memiliki NAMA_PRODUK pada sheet Pesanan.
-    transactionHistory=await enrichHistoryWithProductNames(rawHistory);
-    historyPage = 1;
-
-    renderTransactionHistory();
-  } catch(error) {
-    console.error(error);
-    body.innerHTML=`<tr><td colspan="9" class="text-center text-danger py-4"><strong>Gagal memuat History Transaksi.</strong><br><small>${error.message || 'Server tidak dapat dihubungi.'}</small></td></tr>`;
-  }
-}
-
-function normalizeHistoryKey(value) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_\-]/g, '');
-}
-
-function getHistoryProductNames(item) {
-  if (!item || typeof item !== 'object') return '-';
-
-  // 1. Prioritas nama produk yang langsung dikirim dari Spreadsheet/API.
-  const directCandidates = [
-    item.NAMA_PRODUK,
-    item.nama_produk,
-    item.namaProduk,
-    item.NAMA_PRODUK_LIST,
-    item.NAMA_PRODUK_TERJUAL,
-    item.PRODUCT_NAME,
-    item.PRODUCT_NAMES,
-    item.NAME,
-    item.name
-  ];
-
-  for (const value of directCandidates) {
-    if (value !== undefined && value !== null && String(value).trim() !== '') {
-      return String(value).trim();
-    }
-  }
-
-  // Database produk dapat berada pada dua array. Gabungkan agar pencarian
-  // tetap berjalan walaupun History dimuat sebelum tabel Input Produk dirender.
-  const productSource = [
-    ...(Array.isArray(products) ? products : []),
-    ...(Array.isArray(gasProducts) ? gasProducts : [])
-  ];
-
-  const resolveProductName = (rawId) => {
-    const key = normalizeHistoryKey(rawId);
-    if (!key) return '';
-
-    const found = productSource.find(product => {
-      const candidates = [
-        product.ID_RING,
-        product.ID_PRODUK,
-        product.ID,
-        product.id,
-        product.KODE_PRODUK,
-        product.kodeProduk,
-        product.sku,
-        product.barcode
-      ];
-      return candidates.some(candidate => normalizeHistoryKey(candidate) === key);
-    });
-
-    return String(
-      found?.NAMA_PRODUK ||
-      found?.namaProduk ||
-      found?.name ||
-      ''
-    ).trim();
-  };
-
-  // 2. Jika transaksi menyimpan detail produk dalam JSON/array.
-  const detailCandidates = [
-    item.ITEMS, item.items,
-    item.DETAIL_PRODUK, item.detailProduk,
-    item.DETAILS, item.details,
-    item.PRODUK, item.produk,
-    item.BARANG, item.barang
-  ];
-
-  for (const value of detailCandidates) {
-    if (!value) continue;
-
-    let parsed = value;
-    try {
-      if (typeof value === 'string') parsed = JSON.parse(value);
-    } catch (error) {
-      parsed = null;
-    }
-
-    const rows = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' ? [parsed] : []);
-    const names = rows.map(detail => {
-      if (!detail || typeof detail !== 'object') return '';
-
-      const directName =
-        detail.NAMA_PRODUK || detail.nama_produk || detail.namaProduk ||
-        detail.PRODUCT_NAME || detail.PRODUK || detail.NAMA || detail.name;
-
-      if (directName && String(directName).trim()) return String(directName).trim();
-
-      const productId =
-        detail.ID_RING || detail.ID_PRODUK || detail.ID || detail.id ||
-        detail.KODE_PRODUK || detail.kodeProduk || detail.SKU || detail.sku ||
-        detail.BARCODE || detail.barcode;
-
-      return resolveProductName(productId);
-    }).filter(Boolean);
-
-    if (names.length) return [...new Set(names)].join(', ');
-  }
-
-  // 3. Fallback untuk History yang menyimpan satu ID produk langsung pada baris transaksi.
-  const idCandidates = [
-    item.ID_RING,
-    item.ID_PRODUK,
-    item.ID_PRODUCT,
-    item.PRODUCT_ID,
-    item.ID_BARANG,
-    item.KODE_PRODUK,
-    item.SKU,
-    item.BARCODE,
-    item.kodeProduk,
-    item.sku,
-    item.barcode
-  ];
-
-  for (const id of idCandidates) {
-    const name = resolveProductName(id);
-    if (name) return name;
-  }
-
-  return '-';
-}
-
-function isHistoryCancelled(item) {
-  const orderStatus = String(item?.STATUS_PESANAN || '').trim().toUpperCase();
-  const transactionStatus = String(item?.STATUS_TRANSAKSI || item?.STATUS || '').trim().toUpperCase();
-  return orderStatus === 'DIBATALKAN' || transactionStatus === 'DIBATALKAN';
-}
-
-function isHistoryRefunded(item) {
-  const refundStatus = String(item?.STATUS_REFUND || '').trim().toUpperCase();
-  const transactionStatus = String(item?.STATUS_TRANSAKSI || item?.STATUS || '').trim().toUpperCase();
-  return refundStatus === 'YA' || refundStatus === 'SEBAGIAN' || transactionStatus.includes('REFUND');
-}
-
-function isHistoryLocked(item) {
-  return isHistoryRefunded(item) || isHistoryCancelled(item);
-}
-
-function renderHistoryStatusBadge(item) {
-  const cancelled = isHistoryCancelled(item);
-  const refunded = isHistoryRefunded(item);
-  const status = cancelled ? 'PESANAN DIBATALKAN' : String(item?.STATUS_TRANSAKSI || item?.STATUS || '-');
-  const badgeClass = cancelled ? 'badge-yellow' : (refunded ? 'badge-red' : 'badge-green');
-  const icon = cancelled ? 'bi-x-circle me-1' : (refunded ? 'bi-arrow-counterclockwise me-1' : 'bi-check-circle me-1');
-  const cancelledStyle = cancelled ? 'style="background:#facc15 !important;color:#713f12 !important;border:1px solid #eab308 !important;font-weight:700 !important;"' : '';
-  return `<span class="badge-soft ${badgeClass} history-status-badge" ${cancelledStyle}><i class="bi ${icon}"></i>${escapeHtml(status)}</span>`;
-}
-
-function renderTransactionHistory() {
+function renderTransactionHistory(){
   const body=document.getElementById('historyTableBody');
   const paginationWrap=document.getElementById('historyPagination');
   const paginationInfo=document.getElementById('historyPaginationInfo');
   const paginationButtons=document.getElementById('historyPaginationButtons');
-  if (!body) return;
-  const data=transactionHistory.filter(isInHistoryPeriod).sort((a,b)=>{
-    const da=parseSheetDate(a.TANGGAL)||new Date(0), db=parseSheetDate(b.TANGGAL)||new Date(0); return db-da;
-  });
-  if (!data.length) {
+  if(!body) return;
+
+  const data=Array.isArray(transactionHistory)?transactionHistory:[];
+  if(!data.length){
     body.innerHTML='<tr><td colspan="6" class="text-center text-muted py-4">Belum ada transaksi pada periode ini.</td></tr>';
-    if (paginationWrap) paginationWrap.style.display='none'; return;
+    if(paginationWrap) paginationWrap.style.display='none';
+    return;
   }
-  const totalPages=Math.max(1,Math.ceil(data.length/HISTORY_PAGE_SIZE));
+
+  const totalPages=Math.max(1, Number(historyMeta.totalPages)||1);
   historyPage=Math.min(Math.max(historyPage,1),totalPages);
-  const startIndex=(historyPage-1)*HISTORY_PAGE_SIZE, endIndex=Math.min(startIndex+HISTORY_PAGE_SIZE,data.length);
-  body.innerHTML=data.slice(startIndex,endIndex).map(x=>{
+  body.innerHTML=data.map(x=>{
     const id=String(x.ID_PEMESANAN||x.ID||'');
     return `<tr>
       <td><strong>${escapeHtml(id||'-')}</strong></td>
@@ -8488,17 +8233,131 @@ function renderTransactionHistory() {
       <td class="text-center">${isHistoryLocked(x) ? `<span class="text-muted small"><i class="bi bi-lock-fill me-1"></i>Aksi terkunci</span>` : `<div class="btn-group btn-group-sm"><button class="btn btn-accent history-detail-btn" title="Kelola transaksi" onclick="openHistoryTransaction('${id.replace(/'/g,"\\'")}')"><i class="bi bi-arrow-counterclockwise"></i></button><button class="btn btn-warning" title="Batalkan pesanan" onclick="openHistoryDeleteModal('${id.replace(/'/g,"\\'")}')"><i class="bi bi-x-circle"></i></button></div>`}</td>
     </tr>`;
   }).join('');
+
   if(paginationWrap&&paginationInfo&&paginationButtons){
-    paginationWrap.style.display=data.length>HISTORY_PAGE_SIZE?'flex':'none';
-    paginationInfo.textContent=`Menampilkan ${startIndex+1}–${endIndex} dari ${data.length} transaksi • 15 data per halaman`;
-    const makeButton=(label,page,disabled=false,active=false,icon='')=>{const btn=document.createElement('button');btn.type='button';btn.className='history-page-btn'+(active?' active':'');btn.disabled=disabled;btn.innerHTML=icon?`<i class="bi ${icon}"></i>`:label;btn.addEventListener('click',()=>{historyPage=page;renderTransactionHistory();document.getElementById('page-history-transaksi')?.scrollIntoView({behavior:'smooth',block:'start'});});return btn;};
-    paginationButtons.innerHTML='';paginationButtons.appendChild(makeButton('Halaman sebelumnya',historyPage-1,historyPage===1,false,'bi-chevron-left'));
-    const pages=[];for(let p=1;p<=totalPages;p++)if(p===1||p===totalPages||Math.abs(p-historyPage)<=1)pages.push(p);
-    let previous=0;pages.forEach(p=>{if(p-previous>1){const dots=document.createElement('span');dots.className='history-pagination-info px-1';dots.textContent='…';paginationButtons.appendChild(dots);}paginationButtons.appendChild(makeButton(String(p),p,false,p===historyPage));previous=p;});
-    paginationButtons.appendChild(makeButton('Halaman berikutnya',historyPage+1,historyPage===totalPages,false,'bi-chevron-right'));
+    paginationWrap.style.display=totalPages>1?'flex':'none';
+    const first = ((historyMeta.page-1)*HISTORY_PAGE_SIZE)+1;
+    const last = first + data.length - 1;
+    paginationInfo.textContent=`Menampilkan ${first}–${last} dari ${Number(historyMeta.total)||data.length} transaksi • ${HISTORY_PAGE_SIZE} data per halaman`;
+    const makeButton=(label,page,disabled=false,active=false,icon='')=>{
+      const btn=document.createElement('button');
+      btn.type='button';
+      btn.className='history-page-btn'+(active?' active':'');
+      btn.disabled=disabled;
+      btn.innerHTML=icon?`<i class="bi ${icon}"></i>`:label;
+      btn.addEventListener('click',()=>{
+        if(btn.disabled) return;
+        historyPage=page;
+        loadTransactionHistory(false);
+      });
+      return btn;
+    };
+    paginationButtons.innerHTML='';
+    paginationButtons.appendChild(makeButton('Halaman sebelumnya',historyPage-1,historyPage<=1,false,'bi-chevron-left'));
+    const pages=[];
+    for(let p=1;p<=totalPages;p++) if(p===1||p===totalPages||Math.abs(p-historyPage)<=1) pages.push(p);
+    let previous=0;
+    pages.forEach(p=>{
+      if(p-previous>1){const dots=document.createElement('span');dots.className='history-pagination-info px-1';dots.textContent='…';paginationButtons.appendChild(dots);}
+      paginationButtons.appendChild(makeButton(String(p),p,false,p===historyPage));
+      previous=p;
+    });
+    paginationButtons.appendChild(makeButton('Halaman berikutnya',historyPage+1,historyPage>=totalPages,false,'bi-chevron-right'));
   }
 }
 
+async function loadTransactionHistory(forceRefresh = false){
+  const body=document.getElementById('historyTableBody');
+  if(!body || !GAS_URL) return;
+
+  const range=getHistoryDateRange();
+  const period=historyFilterToServerPeriod();
+  const requestKey=[period,range.fromValue,range.toValue,historyPage].join('|');
+  const requestId=++historyRequestSeq;
+
+  // Setiap kombinasi filter/halaman punya request sendiri. Request lama tidak
+  // boleh menimpa hasil request baru.
+  if(historyFetchPromise && historyFetchKey===requestKey && !forceRefresh) return historyFetchPromise;
+
+  // Data lama langsung digambar (termasuk yang sudah kedaluwarsa) supaya
+  // tabel tidak pernah kosong, lalu diperbarui begitu server merespons.
+  const cached=getHistoryLocalCache(true);
+  if(!forceRefresh && cached && Array.isArray(cached.data)){
+    transactionHistory=cached.data;
+    historyMeta=cached.meta || historyMeta;
+    renderTransactionHistory();
+
+    // Data masih segar: tidak perlu memanggil Apps Script sama sekali.
+    if(!cached.stale) {
+      prefetchHistoryPages(period, range, historyMeta.totalPages);
+      return;
+    }
+  }else{
+    body.innerHTML='<tr><td colspan="6" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Memuat history...</td></tr>';
+  }
+
+  const url=buildHistoryUrl(period, range, historyPage);
+  historyFetchKey=requestKey;
+  historyFetchPromise=(async()=>{
+    try{
+      const json=await appFetchJSON(url, forceRefresh?{cache:'no-store'}:{}, forceRefresh?0:HISTORY_FETCH_TTL);
+      if(requestId!==historyRequestSeq) return;
+      if(!json || json.success!==true) throw new Error(json?.message || 'Google Apps Script tidak mengembalikan data history.');
+
+      transactionHistory=Array.isArray(json.data)?json.data:[];
+      historyMeta=json.meta || {page:historyPage,limit:HISTORY_PAGE_SIZE,total:transactionHistory.length,totalPages:transactionHistory.length?1:0};
+      saveHistoryLocalCache(transactionHistory);
+      renderTransactionHistory();
+      prefetchHistoryPages(period, range, historyMeta.totalPages);
+
+      // Jika filter Harian kosong, jangan tampilkan layar kosong/placeholder.
+      // Beri informasi yang jelas agar pengguna tahu database terhubung.
+      if(period==='HARIAN' && !transactionHistory.length && !range.fromValue && !range.toValue){
+        showToast('History','Database terhubung, tetapi tidak ada transaksi hari ini. Gunakan Bulanan/Tahunan untuk melihat transaksi sebelumnya.','slate');
+      }
+    }catch(error){
+      console.error('History:',error);
+      if(requestId!==historyRequestSeq) return;
+      if(cached && Array.isArray(cached.data)){
+        transactionHistory=cached.data;
+        historyMeta=cached.meta || historyMeta;
+        renderTransactionHistory();
+        showToast('Koneksi','Menampilkan history terakhir yang tersimpan. Database sedang tidak merespons.','slate');
+      }else{
+        body.innerHTML=`<tr><td colspan="6" class="text-center text-danger py-4"><strong>Gagal memuat History Transaksi.</strong><br><small>${escapeHtml(error?.message || 'Google Apps Script tidak merespons.')}</small><br><button class="btn btn-sm btn-accent mt-2" onclick="loadTransactionHistory(true)"><i class="bi bi-arrow-repeat me-1"></i>Coba Lagi</button></td></tr>`;
+      }
+    }finally{
+      if(historyFetchKey===requestKey){
+        historyFetchPromise=null;
+        historyFetchKey='';
+      }
+    }
+  })();
+  return historyFetchPromise;
+}
+
+function isHistoryRefunded(item) {
+  const refundStatus = String(item?.STATUS_REFUND || '').trim().toUpperCase();
+  const transactionStatus = String(item?.STATUS_TRANSAKSI || item?.STATUS || '').trim().toUpperCase();
+  return refundStatus === 'YA' || refundStatus === 'SEBAGIAN' || transactionStatus.includes('REFUND');
+}
+
+function isHistoryCancelled(item) {
+  const orderStatus = String(item?.STATUS_PESANAN || '').trim().toUpperCase();
+  const transactionStatus = String(item?.STATUS_TRANSAKSI || item?.STATUS || '').trim().toUpperCase();
+  return orderStatus === 'DIBATALKAN' || transactionStatus === 'DIBATALKAN';
+}
+
+function isHistoryLocked(item) { return isHistoryRefunded(item) || isHistoryCancelled(item); }
+
+function renderHistoryStatusBadge(item) {
+  const cancelled=isHistoryCancelled(item), refunded=isHistoryRefunded(item);
+  const status=cancelled?'PESANAN DIBATALKAN':String(item?.STATUS_TRANSAKSI||item?.STATUS||'-');
+  const badgeClass=cancelled?'badge-yellow':(refunded?'badge-red':'badge-green');
+  const icon=cancelled?'bi-x-circle me-1':(refunded?'bi-arrow-counterclockwise me-1':'bi-check-circle me-1');
+  const cancelledStyle=cancelled?'style="background:#facc15 !important;color:#713f12 !important;border:1px solid #eab308 !important;font-weight:700 !important;"':'';
+  return `<span class="badge-soft ${badgeClass} history-status-badge" ${cancelledStyle}><i class="bi ${icon}"></i>${escapeHtml(status)}</span>`;
+}
 
 /* =====================================================
    CACHE VISUAL REFUND
@@ -8569,8 +8428,11 @@ async function openHistoryTransaction(idPesanan){
   let details=getHistoryDetails(trx);
   let order=trx;
   try{
-    const response=await fetch(`${GAS_URL}?action=transaction&id=${encodeURIComponent(idPesanan)}&ts=${Date.now()}`,{cache:'no-store'});
-    const json=await response.json();
+    const json=await appFetchJSON(
+      `${GAS_URL}?action=transaction&id=${encodeURIComponent(idPesanan)}`,
+      {cache:'no-store'},
+      0
+    );
     if(json.success&&json.data){order={...trx,...(json.data.order||{})};if(Array.isArray(json.data.details)&&json.data.details.length)details=json.data.details;}
   }catch(e){console.warn('Detail API tidak tersedia, memakai data history lokal.',e);}
   const detailRefundQty=(d)=>Math.max(0,Number(d.JUMLAH_REFUND??d.QTY_REFUND??d.REFUND_QTY??0)||0);
@@ -8648,6 +8510,424 @@ function formatHistoryPeriod(from,to,period) {
   return from.toLocaleDateString('id-ID', opt) + ' — ' + to.toLocaleDateString('id-ID', opt);
 }
 
+// =====================================================
+// HELPER UMUM YANG DIPAKAI HISTORY & RIWAYAT TRANSAKSI
+// Fungsi-fungsi ini dipanggil di banyak tempat namun sebelumnya
+// belum pernah didefinisikan, sehingga tabel History dan tombol
+// Detail selalu gagal dijalankan.
+// =====================================================
+function parseSheetDate(value){
+  if(value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  if(value === null || value === undefined || value === '') return null;
+
+  // Angka serial Google Sheets.
+  if(typeof value === 'number' && isFinite(value)){
+    const serial = new Date(Date.UTC(1899,11,30) + value * 86400000);
+    return isNaN(serial.getTime()) ? null : serial;
+  }
+
+  const text = String(value).trim();
+  if(!text) return null;
+
+  // dd/MM/yyyy atau dd-MM-yyyy, dengan atau tanpa jam.
+  const m = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m){
+    const d = new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(m[4]||0), Number(m[5]||0), Number(m[6]||0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const fallback = new Date(text);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
+function getTransactionTotal(transaction){
+  if(!transaction) return 0;
+
+  const raw = transaction.TOTAL_PEMBELIAN ?? transaction.TOTAL_BELIAN ?? transaction.TOTAL ??
+              transaction.TOTAL_HARGA ?? transaction.total ?? 0;
+
+  if(typeof raw === 'number') return isFinite(raw) ? raw : 0;
+
+  // Nilai dari Spreadsheet bisa berupa teks "Rp 150.000".
+  const cleaned = String(raw).replace(/[^0-9,\-]/g,'').replace(',', '.');
+  const parsed = Number(cleaned);
+  return isFinite(parsed) ? Math.round(parsed) : 0;
+}
+
+function getPurchasedQty(detail){
+  if(!detail) return 0;
+  const raw = detail.JUMLAH ?? detail.QTY ?? detail.JUMLAH_BELI ?? detail.JUMLAH_PRODUK ??
+              detail.qty ?? detail.jumlah ?? 0;
+  const value = Number(raw);
+  return isFinite(value) && value > 0 ? value : 0;
+}
+
+function getHistoryDetails(transaction){
+  if(!transaction) return [];
+  const candidates = [transaction.DETAILS, transaction.details, transaction.DETAIL,
+                      transaction.ITEMS, transaction.items, transaction.PRODUK];
+  for(const candidate of candidates){
+    if(Array.isArray(candidate) && candidate.length) return candidate;
+  }
+  return [];
+}
+
+function getHistoryProductName(productId){
+  if(!productId) return '';
+  const found = Array.isArray(products)
+    ? products.find(p => String(p.id) === String(productId) || String(p.ID_PRODUK || '') === String(productId))
+    : null;
+  return found ? (found.name || found.NAMA_PRODUK || '') : '';
+}
+
+function getHistoryDetailName(detail, index){
+  if(!detail) return `Produk ${Number(index||0)+1}`;
+
+  const direct = detail.NAMA_PRODUK || detail.NAMA || detail.nama || detail.productName;
+  if(direct) return String(direct);
+
+  const productId = detail.ID_PRODUK || detail.ID_RING || detail.KODE_PRODUK || detail.id;
+  return getHistoryProductName(productId) || (productId ? String(productId) : `Produk ${Number(index||0)+1}`);
+}
+
+// Panel keranjang pada menu Penjualan.
+function toggleSalesCartPanel(){
+  const panel = document.getElementById('salesCartPanel');
+  const container = panel?.closest('.sales-cart-bottom, .sales-cart-floating');
+  if(container) container.classList.toggle('cart-panel-closed');
+  else if(panel) panel.classList.toggle('cart-hidden');
+}
+
+// =====================================================
+// POPUP "HISTORI TRANSAKSI" DI MENU PENGATURAN
+// Satu request per periode (action=historyReport), lalu seluruh
+// penyaringan kategori dan ringkasan dihitung di browser.
+// =====================================================
+let settingsHistoryCategory = 'success';
+let settingsHistoryFilter = 'daily';
+let settingsHistoryOffset = 0;
+let settingsHistoryData = [];
+let settingsHistorySummary = null;
+let settingsHistoryRequestSeq = 0;
+const SETTINGS_HISTORY_TTL = 60 * 1000;
+
+function getSettingsHistoryRange(){
+  const now = new Date();
+  let from, to;
+
+  if(settingsHistoryFilter === 'weekly'){
+    const base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (settingsHistoryOffset * 7));
+    const weekday = (base.getDay() + 6) % 7; // Senin sebagai hari pertama.
+    from = new Date(base.getFullYear(), base.getMonth(), base.getDate() - weekday);
+    to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 6);
+  }else if(settingsHistoryFilter === 'monthly'){
+    from = new Date(now.getFullYear(), now.getMonth() + settingsHistoryOffset, 1);
+    to = new Date(from.getFullYear(), from.getMonth() + 1, 0);
+  }else if(settingsHistoryFilter === 'yearly'){
+    from = new Date(now.getFullYear() + settingsHistoryOffset, 0, 1);
+    to = new Date(from.getFullYear(), 11, 31);
+  }else{
+    from = new Date(now.getFullYear(), now.getMonth(), now.getDate() + settingsHistoryOffset);
+    to = new Date(from);
+  }
+
+  return {from, to};
+}
+
+function toApiDateValue(date){
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+
+function updateSettingsHistoryPeriodLabel(from, to){
+  const label = document.getElementById('settingsHistoryPeriodLabel');
+  if(label){
+    if(settingsHistoryFilter === 'monthly'){
+      label.textContent = from.toLocaleDateString('id-ID', {month:'long', year:'numeric'});
+    }else if(settingsHistoryFilter === 'yearly'){
+      label.textContent = String(from.getFullYear());
+    }else{
+      label.textContent = formatHistoryPeriod(from, to, settingsHistoryFilter);
+    }
+  }
+
+  // Periode setelah hari ini tidak perlu dibuka.
+  const nextButton = document.querySelector('.settings-history-next');
+  if(nextButton) nextButton.disabled = settingsHistoryOffset >= 0;
+}
+
+function setSettingsHistoryCategory(category, button){
+  settingsHistoryCategory = category;
+  document.querySelectorAll('.settings-history-category').forEach(b => b.classList.remove('active'));
+  if(button) button.classList.add('active');
+  renderSettingsHistory();
+}
+
+function setSettingsHistoryFilter(filter, button){
+  settingsHistoryFilter = filter;
+  settingsHistoryOffset = 0;
+  document.querySelectorAll('.settings-history-filter').forEach(b => {
+    b.classList.remove('active','btn-accent');
+    b.classList.add('btn-outline-secondary');
+  });
+  if(button){
+    button.classList.add('active','btn-accent');
+    button.classList.remove('btn-outline-secondary');
+  }
+  loadSettingsHistory();
+}
+
+function shiftSettingsHistoryPeriod(step){
+  const next = settingsHistoryOffset + Number(step || 0);
+  if(next > 0) return; // Tidak ada transaksi di masa depan.
+  settingsHistoryOffset = next;
+  loadSettingsHistory();
+}
+
+function openSettingsHistoryPopup(){
+  const modalEl = document.getElementById('settingsHistoryModal');
+  if(!modalEl) return;
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  loadSettingsHistory();
+}
+
+function settingsHistoryMessageRow(html){
+  const body = document.getElementById('settingsHistoryTableBody');
+  if(body) body.innerHTML = `<tr><td colspan="7" class="text-center py-4">${html}</td></tr>`;
+}
+
+async function loadSettingsHistory(forceRefresh = false){
+  const {from, to} = getSettingsHistoryRange();
+  updateSettingsHistoryPeriodLabel(from, to);
+
+  if(!GAS_URL){
+    settingsHistoryMessageRow('<span class="text-danger">Alamat Google Apps Script belum diatur.</span>');
+    return;
+  }
+
+  const seq = ++settingsHistoryRequestSeq;
+  settingsHistoryMessageRow('<span class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Memuat histori transaksi...</span>');
+
+  const url = `${GAS_URL}?action=historyReport&from=${toApiDateValue(from)}&to=${toApiDateValue(to)}`;
+
+  try{
+    const json = await appFetchJSON(url, forceRefresh ? {cache:'no-store'} : {}, forceRefresh ? 0 : SETTINGS_HISTORY_TTL);
+    if(seq !== settingsHistoryRequestSeq) return;
+    if(!json || json.success !== true) throw new Error(json?.message || 'Google Apps Script tidak mengembalikan data riwayat.');
+
+    settingsHistoryData = Array.isArray(json.data) ? json.data : [];
+    settingsHistorySummary = json.summary || null;
+    renderSettingsHistory();
+  }catch(error){
+    console.error('Riwayat Transaksi (Pengaturan):', error);
+    if(seq !== settingsHistoryRequestSeq) return;
+    settingsHistoryData = [];
+    settingsHistorySummary = null;
+    settingsHistoryMessageRow(
+      `<strong class="text-danger">Gagal memuat riwayat transaksi.</strong>
+       <div class="small text-muted mt-1">${escapeHtml(error?.message || 'Google Apps Script tidak merespons.')}</div>
+       <button class="btn btn-sm btn-accent mt-2" onclick="loadSettingsHistory(true)"><i class="bi bi-arrow-repeat me-1"></i>Coba Lagi</button>`
+    );
+    updateSettingsHistorySummary({count:0, total:0, qty:0});
+  }
+}
+
+function settingsHistoryItemCategory(item){
+  if(item?.KATEGORI) return item.KATEGORI;
+  if(isHistoryCancelled(item)) return 'cancelled';
+  if(isHistoryRefunded(item)) return 'refund';
+  return 'success';
+}
+
+function updateSettingsHistorySummary(summary){
+  const count = document.getElementById('settingsHistoryTransactionCount');
+  const payment = document.getElementById('settingsHistoryTotalPayment');
+  const qty = document.getElementById('settingsHistoryProductQty');
+  if(count) count.textContent = Number(summary.count || 0).toLocaleString('id-ID');
+  if(payment) payment.textContent = formatRupiah(Math.round(Number(summary.total || 0)));
+  if(qty) qty.textContent = Number(summary.qty || 0).toLocaleString('id-ID');
+}
+
+function renderSettingsHistory(){
+  const body = document.getElementById('settingsHistoryTableBody');
+  if(!body) return;
+
+  const rows = settingsHistoryData.filter(item => settingsHistoryItemCategory(item) === settingsHistoryCategory);
+
+  // Ringkasan diambil dari server bila tersedia, jika tidak dihitung lokal.
+  const summary = (settingsHistorySummary && settingsHistorySummary[settingsHistoryCategory]) || rows.reduce((acc, item) => {
+    acc.count++;
+    acc.total += getTransactionTotal(item);
+    acc.qty += Number(item.JUMLAH_PRODUK || 0);
+    return acc;
+  }, {count:0, total:0, qty:0});
+
+  updateSettingsHistorySummary(summary);
+
+  if(!rows.length){
+    const labels = {success:'pesanan berhasil', refund:'transaksi refund', cancelled:'pesanan dibatalkan'};
+    settingsHistoryMessageRow(`<span class="text-muted">Tidak ada ${labels[settingsHistoryCategory] || 'transaksi'} pada periode ini.</span>`);
+    return;
+  }
+
+  body.innerHTML = rows.map(item => {
+    const id = String(item.ID_PEMESANAN || item.ID || '');
+    const safeId = id.replace(/'/g, "\\'");
+    return `<tr>
+      <td><strong>${escapeHtml(id || '-')}</strong></td>
+      <td>${escapeHtml(String(item.TANGGAL || '-'))}</td>
+      <td>${escapeHtml(String(item.JAM || '-'))}</td>
+      <td><strong>${formatRupiah(getTransactionTotal(item))}</strong></td>
+      <td>${escapeHtml(String(item.METODE_PEMBAYARAN || '-'))}</td>
+      <td>${renderHistoryStatusBadge(item)}</td>
+      <td class="text-center">
+        <button class="btn btn-sm btn-accent" onclick="openSettingsHistoryDetail('${safeId}')">
+          <i class="bi bi-eye me-1"></i>Detail
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// =====================================================
+// DETAIL RIWAYAT TRANSAKSI (POPUP PENGATURAN)
+// =====================================================
+function settingsHistoryRefundRows(items, quantityField){
+  if(!Array.isArray(items) || !items.length){
+    return '<tr><td colspan="3" class="text-center text-muted py-3">Tidak ada data produk.</td></tr>';
+  }
+
+  return items.map((item, index) => {
+    const qty = Number(item[quantityField] ?? item.JUMLAH ?? 0) || 0;
+    const price = Number(item.HARGA_SATUAN ?? item.HARGA ?? 0) || 0;
+    const subtotal = Number(item.SUBTOTAL ?? (price * qty)) || 0;
+    return `<tr>
+      <td>${escapeHtml(getHistoryDetailName(item, index))}</td>
+      <td class="text-center">${qty}</td>
+      <td class="text-end">${formatRupiah(Math.round(subtotal))}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function openSettingsHistoryDetail(idPesanan){
+  const modalEl = document.getElementById('settingsHistoryDetailModal');
+  if(!modalEl) return;
+
+  const loading = document.getElementById('settingsHistoryDetailLoading');
+  const content = document.getElementById('settingsHistoryDetailContent');
+  const idLabel = document.getElementById('settingsHistoryDetailId');
+
+  if(idLabel) idLabel.textContent = `ID Pesanan: ${idPesanan || '-'}`;
+  if(loading) loading.style.display = 'block';
+  if(content) content.style.display = 'none';
+
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+  const local = settingsHistoryData.find(x => String(x.ID_PEMESANAN || x.ID) === String(idPesanan)) || {};
+  let order = local;
+  let details = [];
+  let refundHistory = [];
+
+  try{
+    const json = await appFetchJSON(
+      `${GAS_URL}?action=transaction&id=${encodeURIComponent(idPesanan)}`,
+      {},
+      SETTINGS_HISTORY_TTL
+    );
+    if(json?.success && json.data){
+      order = {...local, ...(json.data.order || {})};
+      details = Array.isArray(json.data.details) ? json.data.details : [];
+      refundHistory = Array.isArray(json.data.refundHistory) ? json.data.refundHistory : [];
+    }
+  }catch(error){
+    console.warn('Detail riwayat tidak dapat diambil, memakai data lokal.', error);
+  }
+
+  const purchaseDate = document.getElementById('settingsHistoryDetailPurchaseDate');
+  const statusEl = document.getElementById('settingsHistoryDetailStatus');
+  if(purchaseDate){
+    const tanggal = String(order.TANGGAL || local.TANGGAL || '-');
+    const jam = String(order.JAM || local.JAM || '');
+    purchaseDate.textContent = jam ? `${tanggal} • ${jam}` : tanggal;
+  }
+  if(statusEl) statusEl.textContent = String(order.STATUS_TRANSAKSI || local.STATUS_TRANSAKSI || '-');
+
+  const refundCard = document.getElementById('settingsHistoryRefundDateCard');
+  const cancelledCard = document.getElementById('settingsHistoryCancelledDateCard');
+  const refunded = isHistoryRefunded(order) || isHistoryRefunded(local);
+  const cancelled = isHistoryCancelled(order) || isHistoryCancelled(local);
+
+  if(refundCard){
+    refundCard.style.display = refunded ? '' : 'none';
+    const refundDate = document.getElementById('settingsHistoryDetailRefundDate');
+    if(refundDate) refundDate.textContent = String(order.TANGGAL_REFUND || local.TANGGAL_REFUND || '-');
+  }
+  if(cancelledCard){
+    cancelledCard.style.display = cancelled ? '' : 'none';
+    const cancelledDate = document.getElementById('settingsHistoryDetailCancelledDate');
+    if(cancelledDate) cancelledDate.textContent = String(order.TANGGAL_DIBATALKAN || local.TANGGAL_DIBATALKAN || '-');
+  }
+
+  const comparison = document.getElementById('settingsHistoryRefundComparison');
+  const normalSection = document.getElementById('settingsHistoryNormalProductSection');
+  const snapshot = refundHistory.length ? refundHistory[refundHistory.length - 1] : null;
+
+  if(snapshot){
+    const before = snapshot.DATA_SEBELUM || {};
+    const after = snapshot.DATA_SESUDAH || {};
+    const refundData = snapshot.DATA_REFUND || {};
+
+    if(comparison) comparison.style.display = '';
+    if(normalSection) normalSection.style.display = 'none';
+
+    const label = document.getElementById('settingsHistoryRefundComparisonLabel');
+    if(label) label.textContent = String(snapshot.STATUS_SESUDAH || 'REFUND');
+
+    const beforeTotal = document.getElementById('settingsHistoryBeforeTotal');
+    const afterTotal = document.getElementById('settingsHistoryAfterTotal');
+    if(beforeTotal) beforeTotal.textContent = formatRupiah(Math.round(Number(snapshot.TOTAL_SEBELUM ?? before?.order?.TOTAL_PEMBELIAN ?? 0) || 0));
+    if(afterTotal) afterTotal.textContent = formatRupiah(Math.round(Number(snapshot.TOTAL_SESUDAH ?? after?.order?.TOTAL_PEMBELIAN ?? 0) || 0));
+
+    const beforeStatus = document.getElementById('settingsHistoryBeforeStatus');
+    const afterStatus = document.getElementById('settingsHistoryAfterStatus');
+    if(beforeStatus) beforeStatus.textContent = String(snapshot.STATUS_SEBELUM || '-');
+    if(afterStatus) afterStatus.textContent = String(snapshot.STATUS_SESUDAH || '-');
+
+    const beforeBody = document.getElementById('settingsHistoryBeforeRefundBody');
+    const afterBody = document.getElementById('settingsHistoryAfterRefundBody');
+    if(beforeBody) beforeBody.innerHTML = settingsHistoryRefundRows(before.details, 'JUMLAH');
+    if(afterBody) afterBody.innerHTML = settingsHistoryRefundRows(after.details, 'JUMLAH');
+
+    const snapshotDate = document.getElementById('settingsHistorySnapshotDate');
+    const refundNominal = document.getElementById('settingsHistoryRefundNominal');
+    const refundQty = document.getElementById('settingsHistoryRefundQty');
+    if(snapshotDate){
+      const parsed = parseSheetDate(snapshot.TANGGAL_REFUND);
+      snapshotDate.textContent = parsed
+        ? parsed.toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'})
+        : String(snapshot.TANGGAL_REFUND || '-');
+    }
+    if(refundNominal) refundNominal.textContent = formatRupiah(Math.round(Number(refundData.TOTAL_NOMINAL_REFUND || 0)));
+    if(refundQty) refundQty.textContent = `${Number(refundData.TOTAL_QTY_REFUND || 0)} item`;
+  }else{
+    if(comparison) comparison.style.display = 'none';
+    if(normalSection) normalSection.style.display = '';
+
+    const productBody = document.getElementById('settingsHistoryDetailProductBody');
+    if(productBody){
+      productBody.innerHTML = details.length
+        ? details.map((detail, index) => `<tr>
+            <td>${escapeHtml(getHistoryDetailName(detail, index))}</td>
+            <td class="text-center">${getPurchasedQty(detail)}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="2" class="text-center text-muted py-3">Detail produk tidak tersedia.</td></tr>';
+    }
+  }
+
+  if(loading) loading.style.display = 'none';
+  if(content) content.style.display = 'block';
+}
+
+
 function setSalesDetailPeriod(period, button) {
   salesDetailPeriod = period;
   document.querySelectorAll('.sales-detail-filter').forEach(b => {
@@ -8699,28 +8979,23 @@ async function renderSalesDetailPopup() {
   body.innerHTML='';
 
   try {
-    const detailResults = await Promise.all(transactions.map(async trx => {
-      const id = trx.ID_PEMESANAN;
-      if (!id) return [];
-      const response = await fetch(`${GAS_URL}?action=transaction&id=${encodeURIComponent(id)}&ts=${Date.now()}`, {cache:'no-store'});
-      const json = await response.json();
-      if (!json.success) return [];
-      return Array.isArray(json.data?.details) ? json.data.details : [];
-    }));
+    const fromParam = from.toISOString();
+    const toParam = to.toISOString();
 
-    const merged = new Map();
-    detailResults.flat().forEach(item => {
-      const name = item.NAMA_PRODUK || item.PRODUK || item.NAMA || item.NAMA_RING || '-';
-      const type = item.JENIS_PENJUALAN || item.JENIS || '-';
-      const price = Number(item.HARGA || item.HARGA_JUAL || item.HARGA_PRODUK || 0);
-      const qty = Number(item.JUMLAH || item.QTY || item.JUMLAH_PRODUK || 1);
-      const key = `${name}|${type}|${price}`;
-      const old = merged.get(key) || {name,type,price,qty:0};
-      old.qty += qty;
-      merged.set(key,old);
-    });
+    const summaryJson = await appFetchJSON(
+      `${GAS_URL}?action=salesDetail&from=${encodeURIComponent(fromParam)}&to=${encodeURIComponent(toParam)}`,
+      {cache:'default'},
+      30000
+    );
 
-    const productsSold = [...merged.values()];
+    if(!summaryJson.success) throw new Error(summaryJson.message || 'Gagal memuat detail penjualan.');
+
+    const productsSold = Array.isArray(summaryJson.data) ? summaryJson.data.map(item => ({
+      name: item.name || '-',
+      type: item.type || '-',
+      price: Number(item.price || 0),
+      qty: Number(item.qty || 0)
+    })) : [];
     const totalQty = productsSold.reduce((sum,x)=>sum+x.qty,0);
     document.getElementById('salesDetailProductQty').textContent = totalQty;
 
@@ -9233,7 +9508,12 @@ async function submitPartialRefund() {
 }
 
 
-document.addEventListener('input', (e) => { if (e.target.id === 'orderSearch') renderOrderProducts(); });
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'orderSearch') {
+    resetSalesProductPagination();
+    renderOrderProducts();
+  }
+});
 window.addEventListener('DOMContentLoaded', () => {
   updateSalesCartVisibility();
   toggleStockInput();
@@ -9550,6 +9830,23 @@ document.addEventListener('keydown', (event) => {
 
 document.getElementById('todayDate').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 navigate(window.location.hash.replace('#', '') || 'dashboard');
+setTimeout(() => { if (document.getElementById('page-history-transaksi')?.classList.contains('active')) loadTransactionHistory(false); }, 120);
+
+// =====================================================
+// PEMANASAN AWAL HISTORY TRANSAKSI
+// Data History (periode Harian) diambil diam-diam saat aplikasi baru
+// dibuka, selagi peramban menganggur. Saat menu History Transaksi
+// benar-benar diklik, data sudah tersedia di cache sehingga tampil
+// secepat popup Riwayat Transaksi di Pengaturan.
+// =====================================================
+function warmUpHistoryTransaksi(){
+  if(!GAS_URL) return;
+  warmUpBackend();
+  loadTransactionHistory(false).catch(() => {});
+}
+
+if (typeof requestIdleCallback === 'function') requestIdleCallback(warmUpHistoryTransaksi, {timeout: 2500});
+else setTimeout(warmUpHistoryTransaksi, 800);
 
 // AUTO RECONNECT PRINTER SETELAH REFRESH.
 // Tidak membuka popup pemilihan perangkat; hanya mencoba perangkat yang sebelumnya
@@ -9922,90 +10219,21 @@ smartBluetoothRefreshUi(smartBluetoothDescribeSavedState());
 
 
 <script>
-  // PWA CACHE CLEANUP: hapus Service Worker lama yang dapat menyajikan HTML/CSS versi cache.
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', async () => {
-      try {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map(r => r.unregister()));
-      } catch(e) { console.warn('PWA cleanup:', e); }
-    });
-  }
-
-
 // =====================================================
 // PERBAIKAN NAVIGASI HISTORY TRANSAKSI
+// Catatan: listener klik untuk menu ini sudah ditangani oleh loop umum
+// (.nav-item[data-page]) di atas. Skrip ini hanya memastikan menu tetap
+// terlihat, tanpa memasang listener klik kedua (yang sebelumnya membuat
+// setiap klik memicu navigasi & permintaan data dua kali).
 // =====================================================
 document.addEventListener('DOMContentLoaded', function () {
   const historyNav = document.querySelector('.nav-item[data-page="history-transaksi"]');
   if (historyNav) {
     historyNav.style.display = 'flex';
     historyNav.style.visibility = 'visible';
-
-    historyNav.addEventListener('click', function (event) {
-      event.preventDefault();
-      navigate('history-transaksi');
-    });
   }
 });
-
-
-// =====================================================
-// AUTO REFRESH + SCROLL UNIVERSAL
-// =====================================================
-let appRefreshTimer = null;
-
-// Bersihkan hanya scroll-lock Bootstrap yang benar-benar tersisa.
-// Tidak memaksa overflow pada setiap focus/load karena itu dapat
-// mengganggu gesture native pada browser dan aplikasi terinstal.
-function clearBootstrapScrollLock() {
-  try {
-    if (document.querySelector('.modal.show')) return;
-    document.body.classList.remove('modal-open');
-    document.body.style.removeProperty('padding-right');
-    document.body.style.removeProperty('overflow');
-    document.body.style.removeProperty('position');
-    document.body.style.removeProperty('top');
-    document.body.style.removeProperty('height');
-    document.documentElement.style.removeProperty('overflow');
-    document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
-  } catch (error) { console.warn('Scroll cleanup:', error); }
-}
-
-function autoRefreshApplication(delay = 1200, targetPage = null) {
-  if (targetPage) sessionStorage.setItem('appRefreshTargetPage', targetPage);
-  if (appRefreshTimer) clearTimeout(appRefreshTimer);
-
-  appRefreshTimer = setTimeout(() => {
-    clearBootstrapScrollLock();
-    // reload biasa lebih aman untuk Web dan PWA daripada memaksa URL baru
-    window.location.reload();
-  }, delay);
-}
-
-// Jalankan sekali setelah halaman selesai dimuat atau dipulihkan dari cache.
-document.addEventListener('DOMContentLoaded', () => setTimeout(clearBootstrapScrollLock, 0), { once:true });
-window.addEventListener('pageshow', (event) => {
-  if (event.persisted) setTimeout(clearBootstrapScrollLock, 0);
-});
-
-// Setelah halaman dimuat ulang, kembali ke menu yang sebelumnya ditentukan.
-document.addEventListener('DOMContentLoaded', function () {
-  const targetPage = sessionStorage.getItem('appRefreshTargetPage');
-
-  if (targetPage) {
-    sessionStorage.removeItem('appRefreshTargetPage');
-
-    setTimeout(() => {
-      if (typeof navigate === 'function') {
-        navigate(targetPage);
-      }
-    }, 300);
-  }
-});
-
 </script>
-
 
 <!-- =====================================================
      NATIVE PRINTER BRIDGE / UNIVERSAL PRINTER MANAGER
